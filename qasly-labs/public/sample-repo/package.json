@@ -1,0 +1,10 @@
+{
+  "name": "sample-vulnerable-solidity-repo",
+  "private": true,
+  "version": "0.1.0",
+  "devDependencies": {
+    "solc": "0.7.6"
+  }
+}
+
+
