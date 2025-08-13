@@ -7,6 +7,8 @@ import { CodeEditor } from "@/components/editor/code-editor";
 // Removed resizable split; using fixed sidebar layout
 import { Brand } from "@/components/brand";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import { Homepage } from "@/components/homepage";
+import { SecurityPanel } from "@/components/premium-features";
 import { useTheme } from "next-themes";
 import { generateId, cn } from "@/lib/utils";
 import { Sun, Moon, ChevronRight } from "lucide-react";
@@ -19,42 +21,86 @@ export default function Home() {
   const [code, setCode] = React.useState<string>("// Connect a repo to begin\n");
   const [language, setLanguage] = React.useState<string | undefined>("typescript");
   const [messages, setMessages] = React.useState<Message[]>([]);
-  const [mode, setMode] = React.useState<"code" | "chat">("code");
+  const [mode, setMode] = React.useState<"code" | "chat" | "security">("code");
+  const [showSecurityPanel, setShowSecurityPanel] = React.useState(false);
   const [isConnecting, setIsConnecting] = React.useState(false);
   const [connectionError, setConnectionError] = React.useState<string | undefined>();
   const [isLoadingFile, setIsLoadingFile] = React.useState(false);
+  const [showEditor, setShowEditor] = React.useState(false);
+  const [isTransitioning, setIsTransitioning] = React.useState(false);
+  const [showingHome, setShowingHome] = React.useState(false);
+  const [globalError, setGlobalError] = React.useState<string | undefined>();
+  const [isOnline, setIsOnline] = React.useState(true);
   const { theme, resolvedTheme, setTheme } = useTheme();
 
   const handleConnect = async (url: string) => {
-    if (!url.trim()) return;
     setIsConnecting(true);
     setConnectionError(undefined);
+    setGlobalError(undefined);
+    
     try {
-      const res = await fetch("/api/repo/connect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+      const res = await fetch("/api/repo/connect", { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify({ url: url.trim() }) 
+      });
+      
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || 'Failed to connect');
+        let errorData;
+        try {
+          const text = await res.text();
+          // Try to parse as JSON, if it fails, use the text as error message
+          try {
+            errorData = JSON.parse(text);
+          } catch {
+            // If JSON parsing fails, the response might be HTML or plain text
+            throw new Error(`Server error: ${text.substring(0, 100)}...`);
+          }
+        } catch (fetchError) {
+          throw new Error('Network error: Unable to connect to server');
+        }
+        
+        throw new Error(errorData.error || `Server error (${res.status})`);
       }
+      
       const data = await res.json();
       console.log('Repository data received:', data);
+      
+      if (!data.tree || data.tree.length === 0) {
+        throw new Error('Repository appears to be empty or inaccessible');
+      }
+      
       setTree(data.tree);
+      setGlobalError(undefined); // Clear any previous errors
+      
+      // Show success message if we have stats
+      if (data.stats) {
+        console.log(`Repository loaded: ${data.stats.totalFiles} files, ${data.stats.totalFolders} folders`);
+      }
+      
       // auto-select a file for demo if present
       const pick = findFirstFilePath(data.tree);
       console.log('First file found:', pick);
       if (pick) handleSelect(pick);
+      
     } catch (error: any) {
-      setConnectionError(error.message || 'Connection failed');
+      console.error('Connection error:', error);
+      const errorMessage = error.message || 'Connection failed';
+      setConnectionError(errorMessage);
+      setGlobalError(`Failed to connect: ${errorMessage}`);
     } finally {
       setIsConnecting(false);
     }
   };
 
-  // Auto-connect to bundled sample repo on first load
+  // Auto-connect to bundled sample repo when editor is shown
   React.useEffect(() => {
-    console.log('Auto-connecting to sample repo...');
-    handleConnect("");
+    if (showEditor) {
+      console.log('Auto-connecting to sample repo...');
+      handleConnect("");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [showEditor]);
 
   const handleSelect = async (path: string) => {
     setActivePath(path);
@@ -79,6 +125,11 @@ export default function Home() {
   };
 
   const handleSend = async (content: string) => {
+    if (!isOnline) {
+      setGlobalError('No internet connection. Cannot send message.');
+      return;
+    }
+    
     const userMsg: Message = { id: generateId(), role: "user", content };
     const pendingId = generateId();
     
@@ -87,8 +138,12 @@ export default function Home() {
     const thinkingDelay = isDeepCommand ? 3000 : 1500;
     
     setMessages((m) => [...m, userMsg, { id: pendingId, role: "assistant", content: "" }]);
+    setGlobalError(undefined);
     
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+      
       const res = await fetch("/api/chat", { 
         method: "POST", 
         headers: { "Content-Type": "application/json" }, 
@@ -96,18 +151,47 @@ export default function Home() {
           messages: [...messages, userMsg],
           currentFile: activePath,
           isDeepAnalysis: isDeepCommand
-        }) 
+        }),
+        signal: controller.signal
       });
-      if (!res.ok) throw new Error('Failed to get response');
+      
+      clearTimeout(timeoutId);
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Network error' }));
+        throw new Error(errorData.error || `Server error (${res.status})`);
+      }
+      
       const data = await res.json();
+      
+      if (!data.reply) {
+        throw new Error('Empty response from AI');
+      }
       
       // Simulate thinking time for better UX
       setTimeout(() => {
         setMessages((m) => m.map((msg) => (msg.id === pendingId ? { ...msg, content: data.reply } : msg)));
       }, thinkingDelay);
-    } catch (error) {
+      
+    } catch (error: any) {
+      console.error('Chat error:', error);
+      let errorMessage = "Sorry, I encountered an error processing your request.";
+      
+      if (error.name === 'AbortError') {
+        errorMessage = "Request timed out. Please try again with a shorter message.";
+        setGlobalError('AI response timed out');
+      } else if (error.message.includes('400')) {
+        errorMessage = "Invalid request. Please check your message and try again.";
+      } else if (error.message.includes('429')) {
+        errorMessage = "Too many requests. Please wait a moment and try again.";
+        setGlobalError('Rate limit exceeded');
+      } else if (error.message.includes('500')) {
+        errorMessage = "Server error. Our team has been notified.";
+        setGlobalError('Server error occurred');
+      }
+      
       setTimeout(() => {
-        setMessages((m) => m.map((msg) => (msg.id === pendingId ? { ...msg, content: "Sorry, I encountered an error processing your request. Please try again." } : msg)));
+        setMessages((m) => m.map((msg) => (msg.id === pendingId ? { ...msg, content: errorMessage } : msg)));
       }, 1000);
     }
   };
@@ -116,13 +200,74 @@ export default function Home() {
     await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) });
   };
 
+  const handleEnterEditor = () => {
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setShowEditor(true);
+      setTimeout(() => {
+        setIsTransitioning(false);
+      }, 100);
+    }, 300);
+  };
+
+  const handleBackToHome = () => {
+    setShowingHome(true);
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setShowEditor(false);
+      setTimeout(() => {
+        setShowingHome(false);
+        setIsTransitioning(false);
+      }, 100);
+    }, 300);
+  };
+
+  if (!showEditor && !isTransitioning && !showingHome) {
+    return (
+      <div className="overflow-y-auto h-screen">
+        <Homepage onEnterEditor={handleEnterEditor} />
+      </div>
+    );
+  }
+
   return (
-    <div className="h-dvh flex flex-col overflow-hidden">
+    <div className={cn(
+      "h-dvh flex flex-col overflow-hidden transition-all duration-500",
+      isTransitioning ? "opacity-0 scale-95" : "opacity-100 scale-100"
+    )}>
+      {/* Global Error Toast */}
+      {(globalError || !isOnline) && (
+        <div className="fixed top-4 right-4 z-50 max-w-sm">
+          <div className="bg-destructive/90 text-destructive-foreground px-4 py-3 rounded-lg shadow-lg border backdrop-blur-sm animate-in slide-in-from-top-2 duration-300">
+            <div className="flex items-start gap-2">
+              <div className="size-4 rounded-full bg-destructive-foreground/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-xs">!</span>
+              </div>
+              <div className="text-sm">
+                {!isOnline ? 'You are offline. Some features may not work.' : globalError}
+              </div>
+              <button 
+                onClick={() => setGlobalError(undefined)}
+                className="ml-auto text-destructive-foreground/70 hover:text-destructive-foreground transition-colors"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div className="h-12 border-b flex items-center justify-between px-5 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center gap-5">
-          <Brand className="text-[13.5px] font-semibold tracking-[-0.02em]" />
+          <button 
+            onClick={handleBackToHome}
+            className="text-[13.5px] font-semibold tracking-[-0.02em] hover:text-primary transition-colors cursor-pointer"
+          >
+            <Brand />
+          </button>
           <div className="text-micro text-muted-foreground">Vulnerability analysis</div>
         </div>
+        
         <div className="flex items-center gap-2">
           <button
             aria-label="Toggle theme"
@@ -185,6 +330,17 @@ export default function Home() {
                 <button
                   className={cn(
                     "h-7 px-3 text-[12.5px] rounded-full border transition-all",
+                    mode === "security" 
+                      ? "bg-primary text-primary-foreground shadow-sm" 
+                      : "bg-background/80 hover:bg-accent/50 backdrop-blur-sm"
+                  )}
+                  onClick={() => setMode("security")}
+                >
+                  Security
+                </button>
+                <button
+                  className={cn(
+                    "h-7 px-3 text-[12.5px] rounded-full border transition-all",
                     mode === "chat" 
                       ? "bg-primary text-primary-foreground shadow-sm" 
                       : "bg-background/80 hover:bg-accent/50 backdrop-blur-sm"
@@ -202,23 +358,26 @@ export default function Home() {
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-hidden">
+                        <div className="flex-1 overflow-hidden">
               {mode === "code" ? (
-                                  <div className="relative h-full">
-                    <CodeEditor
-                      path={activePath}
-                      value={code}
-                      onChange={setCode}
-                      onSave={handleSave}
-                      language={language}
-                      theme={((resolvedTheme ?? theme) as "light" | "dark") ?? "light"}
-                    />
-                    {activePath && (
-                      <div className="absolute top-2 right-2 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded border">
-                        Ctrl+S to save
-                      </div>
-                    )}
-                  </div>
+                <div className="relative h-full">
+                  <CodeEditor
+                    path={activePath}
+                    value={code}
+                    onChange={setCode}
+                    onSave={handleSave}
+                    language={language}
+                    theme={((resolvedTheme ?? theme) as "light" | "dark") ?? "light"}
+                  />
+                  {activePath && (
+                    <div className="absolute top-2 right-2 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded border flex items-center gap-2">
+                      <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs">Ctrl+S</kbd>
+                      to save
+                    </div>
+                  )}
+                </div>
+              ) : mode === "security" ? (
+                <SecurityPanel />
               ) : (
                 <ChatPanel
                   messages={messages}
