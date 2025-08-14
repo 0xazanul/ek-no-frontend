@@ -5,7 +5,10 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Bot, UserRound, Send } from "lucide-react";
+import { Bot, UserRound, Send, FileText } from "lucide-react";
+import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
+import { CollapsibleMessage } from "@/components/chat/collapsible-message";
+import { TypewriterMarkdown } from "@/components/chat/typewriter-markdown";
 
 type Message = {
   id: string;
@@ -18,21 +21,24 @@ type ChatPanelProps = {
   onSend: (content: string) => void;
   className?: string;
   showHeader?: boolean;
+  context?: { file?: string; language?: string };
 };
 
-export function ChatPanel({ messages, onSend, className, showHeader = true }: ChatPanelProps) {
+export function ChatPanel({ messages, onSend, className, showHeader = true, context }: ChatPanelProps) {
   const [input, setInput] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const endRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const [showSlash, setShowSlash] = React.useState(false);
   const [isSending, setIsSending] = React.useState(false);
+  const [stopToken, setStopToken] = React.useState(0);
   const slashOptions = React.useMemo(() => [
     { key: "analyze-file", label: "Analyze current file" },
     { key: "list-risks", label: "List potential risks" },
-    { key: "generate-fixes", label: "Suggest fixes" },
+    { key: "suggest-fixes", label: "Suggest fixes" },
     { key: "explain-vuln", label: "Explain a vulnerability" },
     { key: "review-changes", label: "Review recent changes" },
+    { key: "deep-research", label: "Deep research" },
   ], []);
   const quickActions = React.useMemo(() => [
     { key: "audit-all", label: "Full Scan Repo" },
@@ -106,10 +112,17 @@ export function ChatPanel({ messages, onSend, className, showHeader = true }: Ch
     <div className={cn("h-full flex flex-col bg-card/20", className)}>
       {showHeader && (
         <div className="px-4 py-3 border-b bg-muted/10">
-          <div className="max-w-[820px] mx-auto">
-            <p className="text-micro text-muted-foreground text-center tracking-wide">
-              "Type / to see audit options. Ask anything about the current file or repository."
+          <div className="max-w-[820px] mx-auto flex items-center justify-between">
+            <p className="text-micro text-muted-foreground tracking-wide">
+              Type / for audit options. Ask about the current file or repository.
             </p>
+            {context?.file && (
+              <div className="text-[11px] px-2 py-1 rounded-full border bg-card text-muted-foreground flex items-center gap-1">
+                <FileText className="size-3" />
+                <span className="truncate max-w-[200px]">{context.file.split("/").slice(-1)[0]}</span>
+                {context.language && <span className="opacity-70">({context.language})</span>}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -159,8 +172,8 @@ export function ChatPanel({ messages, onSend, className, showHeader = true }: Ch
                         <Bot className="size-3.5 text-purple-400" />
                       </div>
                     </div>
-                    <div className="max-w-[85%]">
-                      <DeepReasoningResponse content={m.content} />
+                    <div className="max-w-[85%] rounded-2xl px-4 py-3 text-[14px] leading-6 bg-muted/60 text-foreground border border-border/50">
+                      <TypewriterMarkdown content={m.content} stopSignal={stopToken} />
                     </div>
                   </div>
                 );
@@ -174,7 +187,7 @@ export function ChatPanel({ messages, onSend, className, showHeader = true }: Ch
                     </div>
                   </div>
                   <div className="max-w-[85%] rounded-2xl px-4 py-3 text-[14px] leading-6 bg-muted/60 text-foreground border border-border/50">
-                    {m.content}
+                    <TypewriterMarkdown content={m.content} stopSignal={stopToken} />
                   </div>
                 </div>
               );
@@ -192,7 +205,7 @@ export function ChatPanel({ messages, onSend, className, showHeader = true }: Ch
                 key={qa.key}
                 onClick={() => handleQuick(qa.key)}
                 disabled={isSending}
-                className="h-7 px-3 text-[12.5px] rounded-full border bg-card hover:bg-accent/50 transition-surgical disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-8 px-3 text-[13px] rounded-full border bg-card hover:bg-accent/50 transition-surgical disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {qa.label}
               </button>
@@ -224,6 +237,14 @@ export function ChatPanel({ messages, onSend, className, showHeader = true }: Ch
               ) : (
                 <Send className="size-4" />
               )}
+            </Button>
+            <Button
+              onClick={() => setStopToken((t) => t + 1)}
+              variant="ghost"
+              className="h-10 px-3"
+              aria-label="Stop generation"
+            >
+              Stop
             </Button>
           </div>
           {showSlash && (
@@ -265,87 +286,6 @@ function DeepThinkingDisplay() {
   );
 }
 
-function DeepReasoningResponse({ content }: { content: string }) {
-  const [visibleText, setVisibleText] = React.useState("");
-  const [isComplete, setIsComplete] = React.useState(false);
-  
-  // Generate sample deep reasoning content if needed
-  const deepContent = content.length > 500 ? content : `
-**Security Analysis**
-
-After analyzing the codebase, I've identified several critical security considerations:
-
-**Primary Vulnerabilities:**
-
-1. **Reentrancy Vulnerabilities** - Smart contracts show patterns where external calls are made before state updates, creating potential reentrancy attack vectors.
-
-2. **Access Control Weaknesses** - Several functions lack proper access control mechanisms. The absence of onlyOwner modifiers could allow unauthorized access.
-
-3. **Integer Overflow/Underflow Risks** - Pre-Solidity 0.8 arithmetic operations without SafeMath library usage pose significant risks.
-
-**Risk Assessment:**
-
-• **Randomness Manipulation**: Lottery contracts use block.timestamp for randomness, which miners can influence.
-• **Unchecked External Calls**: Functions making external calls without proper return value checking.
-• **Gas Optimization Issues**: Inefficient loops could lead to DoS attacks.
-
-**Recommended Mitigations:**
-
-1. Implement the Checks-Effects-Interactions pattern
-2. Add comprehensive access control
-3. Upgrade to Solidity 0.8+ or implement SafeMath
-4. Use Chainlink VRF for secure randomness
-5. Add proper error handling for external calls
-
-**Impact Severity**: HIGH - These vulnerabilities could result in complete loss of user funds.
-  `.trim();
-  
-  React.useEffect(() => {
-    let index = 0;
-    const interval = setInterval(() => {
-      if (index <= deepContent.length) {
-        setVisibleText(deepContent.slice(0, index));
-        index += 5; // Faster reveal speed
-      } else {
-        setIsComplete(true);
-        clearInterval(interval);
-      }
-    }, 20);
-    
-    return () => clearInterval(interval);
-  }, [deepContent]);
-  
-  return (
-    <div className="rounded-2xl bg-muted/30 border border-border/50 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <div className={cn(
-          "size-1.5 rounded-full transition-colors duration-500",
-          isComplete ? "bg-green-500" : "bg-muted-foreground animate-pulse"
-        )} />
-        <span className="text-sm text-muted-foreground">
-          {isComplete ? "Analysis Complete" : "Analyzing..."}
-        </span>
-      </div>
-      
-      <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-foreground">
-        {visibleText}
-        {!isComplete && <span className="inline-block w-1 h-4 bg-muted-foreground animate-pulse ml-1" />}
-      </div>
-      
-      {isComplete && (
-        <div className="grid grid-cols-2 gap-2 mt-4">
-          <div className="p-2 rounded-lg bg-muted/20 border border-border/30">
-            <div className="text-xs text-muted-foreground mb-1">Risk Level</div>
-            <div className="text-sm font-medium">HIGH</div>
-          </div>
-          <div className="p-2 rounded-lg bg-muted/20 border border-border/30">
-            <div className="text-xs text-muted-foreground mb-1">Issues Found</div>
-            <div className="text-sm font-medium">7</div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+// DeepReasoningResponse was replaced by markdown-only rendering above
 
 

@@ -382,7 +382,7 @@ export default function Home() {
                 <ChatPanel
                   messages={messages}
                   onSend={handleSend}
-                  showHeader={false}
+                  showHeader={true}
                 />
               )}
             </div>

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Editor, { OnChange, OnMount } from "@monaco-editor/react";
+import * as React from "react";
 import { cn } from "@/lib/utils";
 
 type CodeEditorProps = {
@@ -17,9 +18,11 @@ type CodeEditorProps = {
 export function CodeEditor({ path, value, language, theme, onChange, onSave, className }: CodeEditorProps) {
   const editorRef = useRef<any>(null);
   const [ready, setReady] = useState(false);
+  const monacoRef = useRef<any>(null);
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
+    monacoRef.current = monaco;
     setReady(true);
     const KEY_CODE_S = monaco.KeyCode.KeyS;
     const CMD_OR_CTRL = monaco.KeyMod.CtrlCmd;
@@ -52,6 +55,7 @@ export function CodeEditor({ path, value, language, theme, onChange, onSave, cla
           cursorSmoothCaretAnimation: "on",
           renderWhitespace: "selection",
           bracketPairColorization: { enabled: true },
+          glyphMargin: true,
         }}
       />
     </div>
