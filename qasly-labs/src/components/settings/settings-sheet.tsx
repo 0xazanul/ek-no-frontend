@@ -7,10 +7,67 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Settings } from "lucide-react";
+import { useState } from "react";
 
 type Props = {
   onSave: (v: { openaiApiKey?: string; model?: string }) => void;
 };
+
+function GithubIntegrationSettings() {
+  const [token, setToken] = useState<string>(() => typeof window !== 'undefined' ? localStorage.getItem('github_token') || '' : '');
+  const [repo, setRepo] = useState<string>(() => typeof window !== 'undefined' ? localStorage.getItem('github_repo') || '' : '');
+  const [status, setStatus] = useState<string>("");
+
+  const handleSave = () => {
+    localStorage.setItem('github_token', token);
+    localStorage.setItem('github_repo', repo);
+    setStatus("Saved!");
+  };
+
+  const handleTest = async () => {
+    setStatus("Testing...");
+    try {
+      const res = await fetch(`https://api.github.com/repos/${repo}/issues`, {
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github+json',
+        }
+      });
+      if (res.status === 200) {
+        setStatus("Connection successful!");
+      } else {
+        setStatus("Failed: " + res.status);
+      }
+    } catch (e) {
+      setStatus("Error: " + (e as any).message);
+    }
+  };
+
+  return (
+    <div className="mb-6 p-4 border rounded bg-muted/10">
+      <div className="font-semibold mb-2">GitHub Issues Integration</div>
+      <div className="mb-2 text-xs text-muted-foreground">Enter a GitHub personal access token (with repo scope) and the repository (owner/repo) to enable issue creation from findings.</div>
+      <input
+        className="w-full mb-2 p-2 border rounded"
+        placeholder="GitHub Personal Access Token"
+        value={token}
+        onChange={e => setToken(e.target.value)}
+        type="password"
+      />
+      <input
+        className="w-full mb-2 p-2 border rounded"
+        placeholder="Repository (owner/repo)"
+        value={repo}
+        onChange={e => setRepo(e.target.value)}
+      />
+      <div className="flex gap-2">
+        <button className="px-3 py-1 rounded bg-primary text-primary-foreground" onClick={handleSave}>Save</button>
+        <button className="px-3 py-1 rounded bg-muted border" onClick={handleTest}>Test Connection</button>
+        <span className="text-xs ml-2">{status}</span>
+      </div>
+    </div>
+  );
+}
 
 export function SettingsSheet({ onSave }: Props) {
   const [openaiApiKey, setOpenaiApiKey] = React.useState("");
@@ -57,6 +114,7 @@ export function SettingsSheet({ onSave }: Props) {
               </SelectContent>
             </Select>
           </div>
+          <GithubIntegrationSettings />
           <div className="pt-6">
             <Button 
               onClick={handleSave}

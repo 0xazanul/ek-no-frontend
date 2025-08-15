@@ -35,17 +35,6 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(function Co
   const [showNavigation, setShowNavigation] = useState(false);
   const [navigationItems, setNavigationItems] = useState<NavigationItem[]>([]);
   const [fileStats, setFileStats] = useState<{lines: number, chars: number}>({lines: 0, chars: 0});
-  const [useSimpleEditor] = useState(true);
-  const [editorError] = useState<string | null>(null);
-  const [highlightedCode, setHighlightedCode] = useState<string>('');
-  const [editMode, setEditMode] = useState(true); // Start in edit mode for better UX
-  
-  // Find/Replace State
-  const [showFindReplace, setShowFindReplace] = useState(false);
-  const [findQuery, setFindQuery] = useState('');
-  const [replaceQuery, setReplaceQuery] = useState('');
-  const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
-  const [matches, setMatches] = useState<{ start: number; end: number }[]>([]);
 
   // Handle text area changes for simple editor
   const handleTextAreaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -173,8 +162,10 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(function Co
   // Note: Findings display is handled by the issues panel separately
 
   // Always use simple editor for reliable display
-  // const [useSimpleEditor] = useState(true); // This line is removed as per the edit hint
-  // const [editorError] = useState<string | null>(null); // This line is removed as per the edit hint
+  const [useSimpleEditor] = useState(true);
+  const [editorError] = useState<string | null>(null);
+  const [highlightedCode, setHighlightedCode] = useState<string>('');
+  const [editMode, setEditMode] = useState(true); // Start in edit mode for better UX
   
   // Apply syntax highlighting and update file stats
   useEffect(() => {

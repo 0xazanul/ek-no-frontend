@@ -6,28 +6,28 @@ import { FileExplorer } from "@/components/editor/file-explorer";
 import { CodeEditor, CodeEditorRef } from "@/components/editor/code-editor";
 import { IssuesPanel } from "@/components/editor/issues-panel";
 import type { Finding } from "@/types/finding";
-// Removed resizable split; using fixed sidebar layout
 import { Brand } from "@/components/brand";
 import { ChatPanel } from "@/components/chat/chat-panel";
-import { Homepage } from "@/components/homepage";
+import { Homepage } from "@/components/homepage"; // This will be removed or refactored
 import { SecurityPanel } from "@/components/premium-features";
 import { CollaborationPanel } from "@/components/editor/collaboration-panel";
 import { FileHistory } from "@/components/editor/file-history";
-// Keyboard shortcuts removed as requested
 import { NotificationProvider, useNotification } from "@/components/ui/notification";
 import { useTheme } from "next-themes";
 import { generateId, cn } from "@/lib/utils";
-import { 
-  Sun, Moon, ChevronRight, Package, Shield, AlertCircle, 
+import {
+  Sun, Moon, ChevronRight, Package, Shield, AlertCircle,
   Users, Share2, History, Search, Download, ChevronLeft
 } from "lucide-react";
+import { DashboardLayout } from "@/components/layout/dashboard-layout"; // Import the new layout
+import { useRef, useState } from "react";
 
 type Message = { id: string; role: "user" | "assistant"; content: string };
 
-function HomeContent() {
+export default function EditorPage() {
   const [tree, setTree] = React.useState<RepoNode[]>([]);
   const [activePath, setActivePath] = React.useState<string | undefined>(undefined);
-  const [code, setCode] = React.useState<string>("// Connect a repo to begin\n");
+  const [code, setCode] = React.useState<string>("// Connect a repo to begin\\n");
   const [language, setLanguage] = React.useState<string | undefined>("typescript");
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [mode, setMode] = React.useState<"code" | "chat" | "security">("code");
@@ -38,9 +38,6 @@ function HomeContent() {
   const [connectionError, setConnectionError] = React.useState<string | undefined>();
   const [isLoadingFile, setIsLoadingFile] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
-  const [showEditor, setShowEditor] = React.useState(false);
-  const [isTransitioning, setIsTransitioning] = React.useState(false);
-  const [showingHome, setShowingHome] = React.useState(false);
   const [globalError, setGlobalError] = React.useState<string | undefined>();
   const [isOnline, setIsOnline] = React.useState(true);
   const [findings, setFindings] = React.useState<Finding[]>([]);
@@ -48,19 +45,19 @@ function HomeContent() {
   const { theme, resolvedTheme, setTheme } = useTheme();
   const { addNotification } = useNotification();
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = React.useState(false);
-  
-  // Keyboard shortcuts removed as requested
+  const [fileCache, setFileCache] = useState<Record<string, string>>({}); // path -> content
+  const [findingsCache, setFindingsCache] = useState<Record<string, Finding[]>>({}); // path -> findings
+  const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(new Set());
+  const [scanProgress, setScanProgress] = useState<{total: number, current: number, scanning: boolean}>({total: 0, current: 0, scanning: false});
 
   const handleConnect = async (url: string) => {
     setIsConnecting(true);
     setConnectionError(undefined);
     setGlobalError(undefined);
-    
+
     try {
-      // If connecting to the sample repo (empty URL), try a direct approach first
       if (!url.trim()) {
         try {
-          // Create a sample repo structure manually with diverse files
           const sampleTree: RepoNode[] = [
             {
               name: "contracts",
@@ -77,7 +74,7 @@ function HomeContent() {
                 { name: "UncheckedTransfer.sol", path: "contracts/UncheckedTransfer.sol", type: "file" },
                 { name: "UnsafeDelegate.sol", path: "contracts/UnsafeDelegate.sol", type: "file" },
                 { name: "UnsafeInitializer.sol", path: "contracts/UnsafeInitializer.sol", type: "file" },
-                { name: "UnsafeDelegate.js", path: "contracts/UnsafeDelegate.js", type: "file" }, // JS version
+                { name: "UnsafeDelegate.js", path: "contracts/UnsafeDelegate.js", type: "file" },
               ]
             },
             {
@@ -120,18 +117,15 @@ function HomeContent() {
             { name: "go.mod", path: "go.mod", type: "file" },
             { name: "README.md", path: "README.md", type: "file" },
           ];
-          
+
           setTree(sampleTree);
-          
-          // Show success notification
           addNotification({
             type: "success",
             title: "Sample repository loaded",
             message: "Connected to local sample repository",
             duration: 3000
           });
-          
-          // Select a preferred file by default
+
           const pick = findFirstFilePath(sampleTree);
           console.log('First file found:', pick);
           if (pick) handleSelect(pick);
@@ -141,66 +135,60 @@ function HomeContent() {
           console.warn("Failed to load local sample repo directly, falling back to API:", e);
         }
       }
-      
-      const res = await fetch("/api/repo/connect", { 
-        method: "POST", 
-        headers: { "Content-Type": "application/json" }, 
-        body: JSON.stringify({ url: url.trim() }) 
+
+      const res = await fetch("/api/repo/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() })
       });
-      
+
       if (!res.ok) {
         let errorData;
         try {
           const text = await res.text();
-          // Try to parse as JSON, if it fails, use the text as error message
           try {
             errorData = JSON.parse(text);
           } catch {
-            // If JSON parsing fails, the response might be HTML or plain text
             throw new Error(`Server error: ${text.substring(0, 100)}...`);
           }
         } catch (fetchError) {
           throw new Error('Network error: Unable to connect to server');
         }
-        
+
         throw new Error(errorData.error || `Server error (${res.status})`);
       }
-      
+
       const data = await res.json();
       console.log('Repository data received:', data);
-      
+
       if (!data.tree || data.tree.length === 0) {
         throw new Error('Repository appears to be empty or inaccessible');
       }
-      
+
       setTree(data.tree);
-      setGlobalError(undefined); // Clear any previous errors
-      
-      // Show success message if we have stats
+      setGlobalError(undefined);
+
       if (data.stats) {
         console.log(`Repository loaded: ${data.stats.totalFiles} files, ${data.stats.totalFolders} folders`);
       }
-      
-      // Show success notification
+
       addNotification({
         type: "success",
         title: "Repository connected",
         message: url ? `Connected to ${url}` : "Connected to sample repository",
         duration: 5000
       });
-      
-      // auto-select a file for demo if present
+
       const pick = findFirstFilePath(data.tree);
       console.log('First file found:', pick);
       if (pick) handleSelect(pick);
-      
+
     } catch (error: any) {
       console.error('Connection error:', error);
       const errorMessage = error.message || 'Connection failed';
       setConnectionError(errorMessage);
       setGlobalError(`Failed to connect: ${errorMessage}`);
-      
-      // Show error notification
+
       addNotification({
         type: "error",
         title: "Connection failed",
@@ -212,32 +200,26 @@ function HomeContent() {
     }
   };
 
-  // Don't auto-connect to sample repo
   React.useEffect(() => {
-    if (showEditor) {
-      console.log('Editor shown, no auto-connect');
-      // Auto-connect disabled as requested
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showEditor]);
+    // Auto-connect disabled as requested
+  }, []);
 
+  // When a file is selected, load from cache if available
   const handleSelect = async (path: string) => {
     setActivePath(path);
     setIsLoadingFile(true);
-    
-    // Show notification
-    addNotification({
-      type: "info",
-      title: "Loading file",
-      message: `Loading ${path}...`,
-      duration: 2000
-    });
-    
-    // Set loading indicator immediately
+    addNotification({ type: "info", title: "Loading file", message: `Loading ${path}...`, duration: 2000 });
     setCode("// Loading file content...");
-    
-    // Try to load from cache first for instant display
     try {
+      // Use cache if available
+      if (fileCache[path]) {
+        setCode(fileCache[path]);
+        setLanguage(inferLanguageFromPath(path));
+        setFindings(findingsCache[path] || []);
+        setIsLoadingFile(false);
+        return;
+      }
+
       const cachedContent = localStorage.getItem(`file_cache_${path}`);
       if (cachedContent) {
         setCode(cachedContent);
@@ -247,12 +229,10 @@ function HomeContent() {
     } catch (e) {
       console.warn("Could not access cache:", e);
     }
-    
+
     try {
-      // Add a small delay to ensure UI updates before fetch
       await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Handle sample repo files with content from specific paths
+
       if (path.startsWith('contracts/') || path.startsWith('web/') || path.startsWith('backend/') || path.startsWith('.github/') || path === 'package.json' || path === 'requirements.txt' || path === 'go.mod' || path === 'pom.xml' || path === 'build.gradle') {
         let content = '';
         switch (path) {
@@ -271,7 +251,7 @@ contract UnsafeDelegate {
         (bool ok, ) = target.delegatecall(data); // VULN: arbitrary delegatecall
         require(ok, "fail");
     }
-}`; 
+}`;
             setLanguage('javascript');
             break;
           case 'contracts/AccessControl.sol':
@@ -317,9 +297,7 @@ contract LoopGasBomb {
 
     function loop(uint n) public {
         for (uint i = 0; i < n; i++) {
-            // This loop consumes gas based on input 'n'
-            // Can lead to OOG if 'n' is too large
-            totalGas += 1; // dummy operation to consume gas
+            totalGas += 1;
         }
     }
 }
@@ -337,10 +315,8 @@ contract OverflowToken is ERC20 {
         _mint(msg.sender, 1000 * 10 ** decimals());
     }
 
-    // VULN: Potential integer overflow on addition before Solidity 0.8.0
-    // SafeMath or Solidity 0.8.0+ are needed to prevent this.
     function transferTokens(address to, uint256 amount1, uint256 amount2) public returns (bool) {
-        uint256 totalAmount = amount1 + amount2; // If amount1 + amount2 > type(uint256).max, this overflows
+        uint256 totalAmount = amount1 + amount2;
         _transfer(msg.sender, to, totalAmount);
         return true;
     }
@@ -385,7 +361,7 @@ contract PriceOracle {
 
     constructor() {
         owner = msg.sender;
-        price = 100; // default price
+        price = 100;
     }
 
     modifier onlyOwner() {
@@ -393,7 +369,6 @@ contract PriceOracle {
         _;
     }
 
-    // VULN: Price can be manipulated by owner without external validation
     function setPrice(uint _newPrice) public onlyOwner {
         price = _newPrice;
     }
@@ -417,8 +392,6 @@ contract RandomLottery {
         players.push(msg.sender);
     }
 
-    // VULN: Uses block.timestamp and block.difficulty for randomness
-    // These can be manipulated by miners.
     function drawWinner() public returns (uint) {
         require(players.length > 0, "No players");
         winnerNumber = uint(keccak256(abi.encodePacked(block.timestamp, block.difficulty, players.length))) % players.length;
@@ -439,15 +412,14 @@ contract ReentrancyVault {
         balances[msg.sender] += msg.value;
     }
 
-    // VULN: Reentrancy vulnerability - state updated after external call
     function withdraw() public {
         uint amount = balances[msg.sender];
         require(amount > 0, "Nothing to withdraw");
 
-        (bool success, ) = msg.sender.call{value: amount}(""); // External call
+        (bool success, ) = msg.sender.call{value: amount}("");
         require(success, "Transfer failed");
 
-        balances[msg.sender] = 0; // State update after external call
+        balances[msg.sender] = 0;
     }
 
     function getBalance() public view returns (uint) {
@@ -472,10 +444,8 @@ contract UncheckedTransfer {
         token = _token;
     }
 
-    // VULN: No check for return value of token.transfer()
-    // Malicious token contracts can return false on failure
     function sendTokens(address to, uint amount) public {
-        token.transfer(to, amount); // Return value is not checked
+        token.transfer(to, amount);
     }
 }
 `;
@@ -489,11 +459,11 @@ contract UnsafeDelegate {
     address public target;
 
     function setTarget(address t) external {
-        target = t; // VULN: no validation
+        target = t;
     }
 
     function execute(bytes memory data) external payable {
-        (bool ok, ) = target.delegatecall(data); // VULN: arbitrary delegatecall
+        (bool ok, ) = target.delegatecall(data);
         require(ok, "fail");
     }
 }
@@ -508,8 +478,6 @@ contract UnsafeInitializer {
     uint public value;
     bool public initialized;
 
-    // VULN: Missing initializer guard
-    // Allows re-initialization if not deployed via upgradeable proxy pattern
     function initialize(uint _value) public {
         value = _value;
         initialized = true;
@@ -525,18 +493,18 @@ contract UnsafeInitializer {
             break;
           case 'web/index.html':
             content = `<!DOCTYPE html>
-<html lang="en">
+<html lang=\"en\">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset=\"UTF-8\">
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
     <title>Sample Web Page</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel=\"stylesheet\" href=\"style.css\">
 </head>
 <body>
     <h1>Welcome!</h1>
     <p>This is a sample HTML page.</p>
-    <button id="myButton">Click Me</button>
-    <script src="app.js"></script>
+    <button id=\"myButton\">Click Me</button>
+    <script src=\"app.js\"></script>
 </body>
 </html>
 `;
@@ -568,16 +536,13 @@ h1 {
     alert('Button clicked!');
 });
 
-// VULN: Example of an insecure direct object reference (IDOR) if not properly handled server-side
 async function fetchUserData(userId) {
-    // In a real application, this would fetch from an API
-    // If server-side doesn\'t validate userId against authenticated user, it\'s an IDOR
-    const response = await fetch(\`/api/users/\${userId}\`);
+    const response = await fetch(\`/api/users/${userId}\`);
     const data = await response.json();
     console.log('User data:', data);
 }
 
-fetchUserData(123); // Example usage
+fetchUserData(123);
 `;
             setLanguage('javascript');
             break;
@@ -592,7 +557,7 @@ import (
 
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello, %s!\n", r.URL.Path[1:])
+		fmt.Fprintf(w, "Hello, %s!\\n", r.URL.Path[1:])
 	})
 
 	port := os.Getenv("PORT")
@@ -600,13 +565,10 @@ func main() {
 		port = "8080"
 	}
 
-	fmt.Printf("Server listening on port %s\n", port)
-	// VULN: Using a hardcoded port and not handling errors from ListenAndServe
-	// In production, configure robust error handling and dynamic port allocation.
-	// Also, consider using HTTPS.
+	fmt.Printf("Server listening on port %s\\n", port)
 	err := http.ListenAndServe(":"+port, nil)
 	if err != nil {
-		fmt.Printf("Server failed: %v\n", err)
+		fmt.Printf("Server failed: %v\\n", err)
 	}
 }
 `;
@@ -622,8 +584,6 @@ app = Flask(__name__)
 def execute_command():
     command = request.args.get('cmd')
     if command:
-        # VULN: Command Injection - directly executing user input
-        # In a real app, use a whitelist of allowed commands or restrict input.
         result = os.popen(command).read()
         return jsonify({'output': result})
     return jsonify({'error': 'No command provided'}), 400
@@ -646,10 +606,10 @@ COPY . .
 EXPOSE 8080
 CMD ["python", "server.py"]
 `;
-            setLanguage('dockerfile'); // Assuming 'dockerfile' language support
+            setLanguage('dockerfile');
             break;
           case 'package.json':
-            content = `{ 
+            content = `{
   "name": "sample-app",
   "version": "1.0.0",
   "description": "A sample Node.js application",
@@ -657,7 +617,7 @@ CMD ["python", "server.py"]
   "dependencies": {
     "express": "4.17.1",
     "lodash": "4.17.15",
-    "axios": "0.21.1" 
+    "axios": "0.21.1"
   },
   "devDependencies": {
     "nodemon": "2.0.7"
@@ -671,7 +631,7 @@ CMD ["python", "server.py"]
 requests>=2.25.1
 django==3.2.5
 `;
-            setLanguage('plaintext'); // or specific python requirements language
+            setLanguage('plaintext');
             break;
           case 'go.mod':
             content = `module example.com/mymodule
@@ -683,7 +643,7 @@ require (
 	github.com/spf13/cobra v1.2.1
 )
 `;
-            setLanguage('go.mod'); // Custom language for go.mod
+            setLanguage('go.mod');
             break;
           case 'README.md':
             content = `# Sample Repository
@@ -694,7 +654,7 @@ This is a sample repository to demonstrate security scanning capabilities.
 - **Smart Contracts (Solidity):** Examples of common vulnerabilities like reentrancy, access control, integer overflows.
 - **Web Files (HTML, CSS, JS):** Basic web application with a simulated IDOR vulnerability.
 - **Backend Services (Go, Python):** Examples of command injection and hardcoded credentials.
-- **Dependency Files:** \`package.json\`, \`requirements.txt\`, \`go.mod\` for SCA scanning.
+- **Dependency Files:** `package.json`, `requirements.txt`, `go.mod` for SCA scanning.
 
 Feel free to explore the files and run security analyses.
 `;
@@ -733,7 +693,7 @@ jobs:
       - name: Run Semgrep
         uses: returntocorp/semgrep-action@v1
         with:
-          publishToken: \$\$\{ secrets.SEMGREP_APP_TOKEN \}\}
+          publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
           publishUrl: https://semgrep.dev
 
       - name: Run Trivy vulnerability scan
@@ -764,8 +724,7 @@ jobs:
 
         if (content) {
           setCode(content);
-          
-          // Show success notification
+
           addNotification({
             type: "success",
             title: "File loaded",
@@ -776,33 +735,28 @@ jobs:
           return;
         }
       }
-      
+
       const res = await fetch(`/api/repo/file?path=${encodeURIComponent(path)}`);
       if (!res.ok) throw new Error('Failed to load file');
-      
+
       const data = await res.json();
-      
+
       if (!data.content && path.endsWith('.go')) {
-        // Fallback content for Go files if API returns empty
-        setCode(`// ${path}\n// Go source file\n\npackage main\n\nimport (\n\t"fmt\"\n)\n\nfunc main() {\n\t// Your code here\n\tfmt.Println("Hello, world!")\n}`);
+        setCode(`// ${path}\\n// Go source file\\n\\npackage main\\n\\nimport (\\n\\t\"fmt\"\\n)\\n\\nfunc main() {\\n\\t// Your code here\\n\\tfmt.Println(\"Hello, world!\")\\n}`);
         setLanguage("go");
       } else if (!data.content && path.endsWith('.sol')) {
-        // Fallback content for Solidity files
-        setCode(`// SPDX-License-Identifier: MIT\npragma solidity ^0.7.6;\n\ncontract ${path.split('/').pop()?.replace('.sol', '') || 'Contract'} {\n    // Contract code here\n}`);
+        setCode(`// SPDX-License-Identifier: MIT\\npragma solidity ^0.7.6;\\n\\ncontract ${path.split('/').pop()?.replace('.sol', '') || 'Contract'} {\\n    // Contract code here\\n}`);
         setLanguage("solidity");
       } else if (!data.content && path.endsWith('.js')) {
-        // Fallback content for JavaScript files
-        setCode(`// ${path}\n\n// JavaScript file content\nfunction main() {\n  console.log("Hello world");\n}\n\nmain();`);
+        setCode(`// ${path}\\n\\n// JavaScript file content\\nfunction main() {\\n  console.log(\"Hello world\");\\n}\\n\\nmain();`);
         setLanguage("javascript");
       } else {
-        setCode(data.content || `// ${path}\n// File loaded successfully`);
+        setCode(data.content || `// ${path}\\n// File loaded successfully`);
         setLanguage(data.language ?? inferLanguageFromPath(path));
       }
-      
-      // Cache the file content in localStorage for faster loading next time
+
       try {
-        localStorage.setItem(`file_cache_${path}`, data.content || "");
-        // Also store metadata about the file
+        localStorage.setItem(`file_cache_${path}`, code);
         localStorage.setItem(`file_meta_${path}`, JSON.stringify({
           language: data.language ?? inferLanguageFromPath(path),
           lastAccessed: new Date().toISOString(),
@@ -811,23 +765,21 @@ jobs:
       } catch (e) {
         console.warn("Could not cache file:", e);
       }
-      
-      // Analyze on load (best-effort)
+
       if (data.content) {
-        const ar = await fetch('/api/analyze/file', { 
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' }, 
-          body: JSON.stringify({ path, content: data.content }) 
+        const ar = await fetch('/api/analyze/file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path, content: data.content })
         });
         if (ar.ok) {
           const aj = await ar.json();
           setFindings(aj.findings || []);
-          
-          // Show notification if vulnerabilities found
+
           if (aj.findings && aj.findings.length > 0) {
             const criticalCount = aj.findings.filter((f: Finding) => f.severity === "critical").length;
             const highCount = aj.findings.filter((f: Finding) => f.severity === "high").length;
-            
+
             if (criticalCount > 0) {
               addNotification({
                 type: "error",
@@ -850,8 +802,7 @@ jobs:
       } else {
         setFindings([]);
       }
-      
-      // Show success notification
+
       addNotification({
         type: "success",
         title: "File loaded",
@@ -860,10 +811,9 @@ jobs:
       });
     } catch (error) {
       console.error('File load error:', error);
-      setCode(`// Error loading file: ${path}\n// ${error instanceof Error ? error.message : 'Unknown error'}\n\n// Try selecting the file again or check your connection`);
+      setCode(`// Error loading file: ${path}\\n// ${error instanceof Error ? error.message : 'Unknown error'}\\n\\n// Try selecting the file again or check your connection`);
       setFindings([]);
-      
-      // Show error notification
+
       addNotification({
         type: "error",
         title: "Error loading file",
@@ -874,8 +824,16 @@ jobs:
       setIsLoadingFile(false);
     }
   };
-  
-  // Helper function to infer language from file path
+
+  // When code is changed, mark file as dirty and update cache
+  const handleCodeChange = (newCode: string) => {
+    setCode(newCode);
+    if (activePath) {
+      setFileCache(prev => ({ ...prev, [activePath]: newCode }));
+      setDirtyFiles(prev => new Set(prev).add(activePath));
+    }
+  };
+
   const inferLanguageFromPath = (path: string): string => {
     const ext = path.split('.').pop()?.toLowerCase();
     const langMap: Record<string, string> = {
@@ -906,48 +864,45 @@ jobs:
     return langMap[ext || ''] || 'plaintext';
   };
 
+  // Incremental scan: only scan dirty files on save
   const handleSave = async () => {
     if (!activePath) return;
-    
-    try {
-      setIsSaving(true);
-      addNotification({
-        type: "info",
-        title: "Saving file...",
-        message: `Saving changes to ${activePath}`,
-        duration: 2000
-      });
-      
-      await fetch("/api/repo/file", { 
-        method: "POST", 
-        headers: { "Content-Type": "application/json" }, 
-        body: JSON.stringify({ path: activePath, content: code }) 
-      });
-      
-      // Cache the updated content
-      try {
-        localStorage.setItem(`file_cache_${activePath}`, code);
-      } catch (e) {
-        console.warn("Could not update cache:", e);
-      }
-      
-      addNotification({
-        type: "success",
-        title: "File saved",
-        message: `${activePath} saved successfully`,
-        duration: 3000
-      });
-    } catch (error) {
-      console.error("Error saving file:", error);
-      addNotification({
-        type: "error",
-        title: "Save failed",
-        message: `Could not save ${activePath}. Please try again.`,
-        duration: 5000
-      });
-    } finally {
+    setIsSaving(true);
+    const dirty = Array.from(dirtyFiles);
+    if (dirty.length === 0) {
+      addNotification({ type: "info", title: "No changes to scan", message: "All files are up to date.", duration: 2000 });
       setIsSaving(false);
+      return;
     }
+    setScanProgress({ total: dirty.length, current: 0, scanning: true });
+    let newFindingsCache = { ...findingsCache };
+    for (let i = 0; i < dirty.length; i++) {
+      const path = dirty[i];
+      const content = fileCache[path];
+      setScanProgress({ total: dirty.length, current: i + 1, scanning: true });
+      try {
+        // Call backend API to analyze file
+        const res = await fetch("/api/analyze/file", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path, content })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          newFindingsCache[path] = data.findings || [];
+          if (path === activePath) setFindings(data.findings || []);
+        } else {
+          newFindingsCache[path] = [];
+        }
+      } catch (e) {
+        newFindingsCache[path] = [];
+      }
+    }
+    setFindingsCache(newFindingsCache);
+    setDirtyFiles(new Set());
+    setScanProgress({ total: 0, current: 0, scanning: false });
+    setIsSaving(false);
+    addNotification({ type: "success", title: "Scan complete", message: "All changes scanned.", duration: 2000 });
   };
 
   const handleSend = async (content: string) => {
@@ -955,54 +910,52 @@ jobs:
       setGlobalError('No internet connection. Cannot send message.');
       return;
     }
-    
+
     const userMsg: Message = { id: generateId(), role: "user", content };
     const pendingId = generateId();
-    
-    // Add thinking delay for deep research commands
+
     const isDeepCommand = content.includes('/deep-research') || content.includes('/audit-all');
     const thinkingDelay = isDeepCommand ? 3000 : 1500;
-    
+
     setMessages((m) => [...m, userMsg, { id: pendingId, role: "assistant", content: "" }]);
     setGlobalError(undefined);
-    
+
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
-      
-      const res = await fetch("/api/chat", { 
-        method: "POST", 
-        headers: { "Content-Type": "application/json" }, 
-        body: JSON.stringify({ 
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           messages: [...messages, userMsg],
           currentFile: activePath,
           isDeepAnalysis: isDeepCommand
         }),
         signal: controller.signal
       });
-      
+
       clearTimeout(timeoutId);
-      
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: 'Network error' }));
         throw new Error(errorData.error || `Server error (${res.status})`);
       }
-      
+
       const data = await res.json();
-      
+
       if (!data.reply) {
         throw new Error('Empty response from AI');
       }
-      
-      // Simulate thinking time for better UX
+
       setTimeout(() => {
         setMessages((m) => m.map((msg) => (msg.id === pendingId ? { ...msg, content: data.reply } : msg)));
       }, thinkingDelay);
-      
+
     } catch (error: any) {
       console.error('Chat error:', error);
       let errorMessage = "Sorry, I encountered an error processing your request.";
-      
+
       if (error.name === 'AbortError') {
         errorMessage = "Request timed out. Please try again with a shorter message.";
         setGlobalError('AI response timed out');
@@ -1015,7 +968,7 @@ jobs:
         errorMessage = "Server error. Our team has been notified.";
         setGlobalError('Server error occurred');
       }
-      
+
       setTimeout(() => {
         setMessages((m) => m.map((msg) => (msg.id === pendingId ? { ...msg, content: errorMessage } : msg)));
       }, 1000);
@@ -1026,41 +979,8 @@ jobs:
     await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) });
   };
 
-  const handleEnterEditor = () => {
-    setIsTransitioning(true);
-    setTimeout(() => {
-      setShowEditor(true);
-      setTimeout(() => {
-        setIsTransitioning(false);
-      }, 100);
-    }, 300);
-  };
-
-  const handleBackToHome = () => {
-    setShowingHome(true);
-    setIsTransitioning(true);
-    setTimeout(() => {
-      setShowEditor(false);
-      setTimeout(() => {
-        setShowingHome(false);
-        setIsTransitioning(false);
-      }, 100);
-    }, 300);
-  };
-
-  if (!showEditor && !isTransitioning && !showingHome) {
-    return (
-      <div className="overflow-y-auto h-screen">
-        <Homepage onEnterEditor={handleEnterEditor} />
-      </div>
-    );
-  }
-
   return (
-    <div className={cn(
-      "h-dvh flex flex-col overflow-hidden transition-all duration-500",
-      isTransitioning ? "opacity-0 scale-95" : "opacity-100 scale-100"
-    )}>
+    <div className="h-full w-full flex overflow-hidden">
       {/* Global Error Toast */}
       {(globalError || !isOnline) && (
         <div className="fixed top-4 right-4 z-50 max-w-sm">
@@ -1072,7 +992,7 @@ jobs:
               <div className="text-sm">
                 {!isOnline ? 'You are offline. Some features may not work.' : globalError}
               </div>
-              <button 
+              <button
                 onClick={() => setGlobalError(undefined)}
                 className="ml-auto text-destructive-foreground/70 hover:text-destructive-foreground transition-colors"
               >
@@ -1082,265 +1002,217 @@ jobs:
           </div>
         </div>
       )}
-      
-      <div className="h-12 border-b flex items-center justify-between px-5 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex items-center gap-5">
-          <button 
-            onClick={handleBackToHome}
-            className="text-[13.5px] font-semibold tracking-[-0.02em] hover:text-primary transition-colors cursor-pointer"
-          >
-            <Brand />
-          </button>
-          <div className="text-micro text-muted-foreground">Vulnerability analysis</div>
+
+      {/* Progress Indicator */}
+      {scanProgress.scanning && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-background border px-6 py-3 rounded shadow-lg flex items-center gap-3">
+          <span className="text-sm font-medium">Scanning files...</span>
+          <span className="text-xs">{scanProgress.current} / {scanProgress.total}</span>
         </div>
-        
-        <div className="flex items-center gap-2">
-          {/* Keyboard shortcuts button removed as requested */}
-          <button
-            aria-label="File history"
-            className="h-8 w-8 rounded-md border flex items-center justify-center transition-surgical focus-surgical"
-            onClick={() => setShowFileHistory(prev => !prev)}
-            title="File History"
-          >
-            <History className="size-4" />
-          </button>
-          <button
-            aria-label="Toggle collaboration"
-            className="h-8 w-8 rounded-md border flex items-center justify-center transition-surgical focus-surgical"
-            onClick={() => setShowCollaboration(prev => !prev)}
-            title="Collaborate"
-          >
-            <Users className="size-4 text-primary" />
-          </button>
-          <button
-            aria-label="Toggle theme"
-            className="h-8 w-8 rounded-md border flex items-center justify-center transition-surgical focus-surgical"
-            onClick={() => {
-              const next = (resolvedTheme ?? theme) === "dark" ? "light" : "dark";
-              setTheme(next);
-              
-              addNotification({
-                type: "info",
-                title: `${next === "dark" ? "Dark" : "Light"} theme activated`,
-                message: `Switched to ${next} mode`,
-                duration: 2000
-              });
-            }}
-          >
-            {(resolvedTheme ?? theme) === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
-          </button>
-        </div>
+      )}
+
+      <div className={cn(
+        "border-r bg-gradient-to-b from-card/60 to-card/30 overflow-hidden min-h-0 backdrop-blur-sm transition-all duration-300 ease-in-out",
+        isLeftPanelCollapsed ? "w-10 min-w-[40px] max-w-[40px]" : "w-80 min-w-[280px] max-w-[320px]"
+      )}>
+        <FileExplorer
+          tree={tree}
+          onSelect={handleSelect}
+          onConnect={handleConnect}
+          activePath={activePath}
+          isConnecting={isConnecting}
+          connectionError={connectionError}
+          isCollapsed={isLeftPanelCollapsed}
+        />
+        <button
+          onClick={() => setIsLeftPanelCollapsed(!isLeftPanelCollapsed)}
+          className={cn(
+            "absolute top-1/2 -translate-y-1/2 bg-muted/50 hover:bg-muted border rounded-full p-1 shadow-md z-10 transition-all duration-300 ease-in-out",
+            isLeftPanelCollapsed ? "left-[30px]" : "left-[310px]"
+          )}
+          title={isLeftPanelCollapsed ? "Expand Panel" : "Collapse Panel"}
+        >
+          {isLeftPanelCollapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
+        </button>
       </div>
-      <div className="flex-1 overflow-hidden">
-        <div className="h-full w-full flex overflow-hidden">
-          <div className={cn(
-            "border-r bg-gradient-to-b from-card/60 to-card/30 overflow-hidden min-h-0 backdrop-blur-sm transition-all duration-300 ease-in-out",
-            isLeftPanelCollapsed ? "w-10 min-w-[40px] max-w-[40px]" : "w-80 min-w-[280px] max-w-[320px]"
-          )}>
-            <FileExplorer
-              tree={tree}
-              onSelect={handleSelect}
-              onConnect={handleConnect}
-              activePath={activePath}
-              isConnecting={isConnecting}
-              connectionError={connectionError}
-              isCollapsed={isLeftPanelCollapsed} // Pass collapsed state to FileExplorer
-            />
-            <button
-              onClick={() => setIsLeftPanelCollapsed(!isLeftPanelCollapsed)}
-              className={cn(
-                "absolute top-1/2 -translate-y-1/2 bg-muted/50 hover:bg-muted border rounded-full p-1 shadow-md z-10 transition-all duration-300 ease-in-out",
-                isLeftPanelCollapsed ? "left-[30px]" : "left-[310px]"
-              )}
-              title={isLeftPanelCollapsed ? "Expand Panel" : "Collapse Panel"}
-            >
-              {isLeftPanelCollapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
-            </button>
-          </div>
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="h-10 border-b bg-gradient-to-r from-muted/40 to-muted/20 px-4 flex items-center justify-between backdrop-blur-sm">
-              <div className="text-micro text-muted-foreground flex items-center gap-2 min-w-0">
-                {isLoadingFile && <div className="size-3 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />}
-                {activePath ? (
-                  <div className="flex items-center gap-1 min-w-0">
-                    {activePath.split('/').map((segment, index, array) => (
-                      <React.Fragment key={index}>
-                        {index > 0 && <ChevronRight className="size-3 opacity-60" />}
-                        <span className={cn(
-                          "transition-colors",
-                          index === array.length - 1 ? "font-medium text-foreground" : "truncate hover:text-foreground/80 cursor-pointer"
-                        )}>
-                          {segment}
-                        </span>
-                      </React.Fragment>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="opacity-60">No file selected</span>
-                )}
-                
-                {/* Scan Dependencies Button */}
-                {(activePath?.endsWith('package.json') || activePath?.endsWith('requirements.txt') || activePath?.endsWith('go.mod') || activePath?.endsWith('pom.xml') || activePath?.endsWith('build.gradle')) && (
-                  <button
-                    className="ml-4 px-2 py-0.5 text-[11px] bg-blue-500/15 text-blue-600 border border-blue-500/30 rounded flex items-center gap-1 hover:bg-blue-500/20 transition-colors"
-                    onClick={async () => {
-                      try {
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="h-10 border-b bg-gradient-to-r from-muted/40 to-muted/20 px-4 flex items-center justify-between backdrop-blur-sm">
+          <div className="text-micro text-muted-foreground flex items-center gap-2 min-w-0">
+            {isLoadingFile && <div className="size-3 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />}
+            {activePath ? (
+              <div className="flex items-center gap-1 min-w-0">
+                {activePath.split('/').map((segment, index, array) => (
+                  <React.Fragment key={index}>
+                    {index > 0 && <ChevronRight className="size-3 opacity-60" />}
+                    <span className={cn(
+                      "transition-colors",
+                      index === array.length - 1 ? "font-medium text-foreground" : "truncate hover:text-foreground/80 cursor-pointer"
+                    )}>
+                      {segment}
+                    </span>
+                  </React.Fragment>
+                ))}
+              </div>
+            ) : (
+              <span className="opacity-60">No file selected</span>
+            )}
+
+            {/* Scan Dependencies Button */}
+            {(activePath?.endsWith('package.json') || activePath?.endsWith('requirements.txt') || activePath?.endsWith('go.mod') || activePath?.endsWith('pom.xml') || activePath?.endsWith('build.gradle')) && (
+              <button
+                className="ml-4 px-2 py-0.5 text-[11px] bg-blue-500/15 text-blue-600 border border-blue-500/30 rounded flex items-center gap-1 hover:bg-blue-500/20 transition-colors"
+                onClick={async () => {
+                  try {
+                    addNotification({
+                      type: "info",
+                      title: "Scanning dependencies",
+                      message: "Checking for vulnerabilities...",
+                      duration: 2000
+                    });
+
+                    const res = await fetch('/api/analyze/dependencies', { // Call the new dependency API
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ files: [{ path: activePath, content: code }] })
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      setFindings(data.findings || []);
+
+                      if (data.findings?.length === 0) {
                         addNotification({
-                          type: "info",
-                          title: "Scanning dependencies",
-                          message: "Checking for vulnerabilities...",
-                          duration: 2000
+                          type: "success",
+                          title: "Scan complete",
+                          message: "No vulnerabilities found in dependencies",
+                          duration: 3000
                         });
-                        
-                        const res = await fetch('/api/analyze/dependencies', { // Call the new dependency API
-                          method: 'POST', 
-                          headers: { 'Content-Type': 'application/json' }, 
-                          body: JSON.stringify({ files: [{ path: activePath, content: code }] }) 
-                        });
-                        if (res.ok) {
-                          const data = await res.json();
-                          setFindings(data.findings || []);
-                          
-                          if (data.findings?.length === 0) {
-                            addNotification({
-                              type: "success",
-                              title: "Scan complete",
-                              message: "No vulnerabilities found in dependencies",
-                              duration: 3000
-                            });
-                          } else {
-                            addNotification({
-                              type: "warning",
-                              title: "Vulnerabilities found",
-                              message: `Found ${data.findings.length} security issues in dependencies`,
-                              duration: 5000
-                            });
-                          }
-                        } else {
-                          const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-                          throw new Error(errorData.error || `Failed to fetch findings (${res.status})`);
-                        }
-                      } catch (error) {
-                        console.error('Error scanning dependencies:', error);
+                      } else {
                         addNotification({
-                          type: "error",
-                          title: "Scan failed",
-                          message: `Failed to scan dependencies: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                          duration: 4000
+                          type: "warning",
+                          title: "Vulnerabilities found",
+                          message: `Found ${data.findings.length} security issues in dependencies`,
+                          duration: 5000
                         });
                       }
-                    }}
-                  >
-                    <Package className="size-3" />
-                    Scan Dependencies
-                  </button>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  className={cn(
-                    "h-7 px-3 text-[12.5px] rounded-full border transition-all",
-                    mode === "code" 
-                      ? "bg-primary text-primary-foreground shadow-sm" 
-                      : "bg-background/80 hover:bg-accent/50 backdrop-blur-sm"
-                  )}
-                  onClick={() => setMode("code")}
-                >
-                  Code
-                </button>
-                <button
-                  className={cn(
-                    "h-7 px-3 text-[12.5px] rounded-full border transition-all",
-                    mode === "chat" 
-                      ? "bg-primary text-primary-foreground shadow-sm" 
-                      : "bg-background/80 hover:bg-accent/50 backdrop-blur-sm"
-                  )}
-                  onClick={() => {
-                    setMode("chat");
-                    // Auto-focus chat input when switching to chat mode
-                    setTimeout(() => {
-                      const chatInput = document.querySelector('textarea[placeholder*="audit options"]') as HTMLTextAreaElement;
-                      chatInput?.focus();
-                    }, 100);
-                  }}
-                >
-                  AI
-                </button>
-                {/* Security button moved to a floating action button */}
-              </div>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              {mode === "code" ? (
-                <div className="relative h-full flex">
-                  <div className="flex-1">
-                    <CodeEditor
-                      ref={editorRef}
-                      path={activePath}
-                      value={code}
-                      onChange={setCode}
-                      onSave={handleSave}
-                      language={language}
-                      theme={((resolvedTheme ?? theme) as "light" | "dark") ?? "light"}
-                      findings={findings}
-                    />
-                    {activePath && (
-                      <div className="absolute top-2 right-2 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded border flex items-center gap-2">
-                        <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs">Ctrl+S</kbd>
-                        to save
-                      </div>
-                    )}
-                    
-                    {/* Floating Security Button */}
-                    <div className="absolute bottom-6 right-6 z-10">
-                      <button 
-                        className="h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 transition-colors"
-                        title="Security Analysis"
-                        onClick={() => setMode("security")}
-                      >
-                        <Shield className="size-5" />
-                      </button>
-                    </div>
+                    } else {
+                      const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+                      throw new Error(errorData.error || `Failed to fetch findings (${res.status})`);
+                    }
+                  } catch (error) {
+                    console.error('Error scanning dependencies:', error);
+                    addNotification({
+                      type: "error",
+                      title: "Scan failed",
+                      message: `Failed to scan dependencies: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                      duration: 4000
+                    });
+                  }
+                }}
+              >
+                <Package className="size-3" />
+                Scan Dependencies
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className={cn(
+                "h-7 px-3 text-[12.5px] rounded-full border transition-all",
+                mode === "code"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-background/80 hover:bg-accent/50 backdrop-blur-sm"
+              )}
+              onClick={() => setMode("code")}
+            >
+              Code
+            </button>
+            <button
+              className={cn(
+                "h-7 px-3 text-[12.5px] rounded-full border transition-all",
+                mode === "chat"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-background/80 hover:bg-accent/50 backdrop-blur-sm"
+              )}
+              onClick={() => {
+                setMode("chat");
+                setTimeout(() => {
+                  const chatInput = document.querySelector('textarea[placeholder*="audit options"]') as HTMLTextAreaElement;
+                  chatInput?.focus();
+                }, 100);
+              }}
+            >
+              AI
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-hidden">
+          {mode === "code" ? (
+            <div className="relative h-full flex">
+              <div className="flex-1">
+                <CodeEditor
+                  ref={editorRef}
+                  path={activePath}
+                  value={code}
+                  onChange={handleCodeChange}
+                  onSave={handleSave}
+                  language={language}
+                  theme={((resolvedTheme ?? theme) as "light" | "dark") ?? "light"}
+                  findings={findings}
+                />
+                {activePath && (
+                  <div className="absolute top-2 right-2 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded border flex items-center gap-2">
+                    <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs">Ctrl+S</kbd>
+                    to save
                   </div>
-                  
-                  {/* Issues Panel */}
-                  {findings.length > 0 && (
-                    <div className="w-80 border-l">
-                      <IssuesPanel 
-                        findings={findings} 
-                        onJump={(line) => editorRef.current?.revealLine(line)} 
-                      />
-                    </div>
-                  )}
-                  
-                  {/* Collaboration Panel */}
-                  {showCollaboration && (
-                    <CollaborationPanel 
-                      onClose={() => setShowCollaboration(false)}
-                      path={activePath}
-                    />
-                  )}
-                  
-                  {/* File History Panel */}
-                  {showFileHistory && (
-                    <FileHistory 
-                      onClose={() => setShowFileHistory(false)}
-                      path={activePath}
-                    />
-                  )}
+                )}
+
+                {/* Floating Security Button */}
+                <div className="absolute bottom-6 right-6 z-10">
+                  <button
+                    className="h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 transition-colors"
+                    title="Security Analysis"
+                    onClick={() => setMode("security")}
+                  >
+                    <Shield className="size-5" />
+                  </button>
                 </div>
-              ) : mode === "security" ? (
-                <SecurityPanel />
-              ) : (
-                <ChatPanel
-                  messages={messages}
-                  onSend={handleSend}
-                  showHeader={true}
+              </div>
+
+              {/* Issues Panel */}
+              {findings.length > 0 && (
+                <div className="w-80 border-l">
+                  <IssuesPanel
+                    findings={findings}
+                    onJump={(line) => editorRef.current?.revealLine(line)}
+                  />
+                </div>
+              )}
+
+              {/* Collaboration Panel */}
+              {showCollaboration && (
+                <CollaborationPanel
+                  onClose={() => setShowCollaboration(false)}
+                  path={activePath}
                 />
               )}
-              
-              {/* Keyboard Shortcuts Dialog removed as requested */}
+
+              {/* File History Panel */}
+              {showFileHistory && (
+                <FileHistory
+                  onClose={() => setShowFileHistory(false)}
+                  path={activePath}
+                />
+              )}
             </div>
-          </div>
+          ) : mode === "security" ? (
+            <SecurityPanel />
+          ) : (
+            <ChatPanel
+              messages={messages}
+              onSend={handleSend}
+              showHeader={true}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -1348,7 +1220,6 @@ jobs:
 }
 
 function findFirstFilePath(nodes: RepoNode[]): string | undefined {
-  // Prioritize specific files for better demo experience
   const preferredFiles = [
     "contracts/UnsafeDelegate.js",
     "contracts/UnsafeDelegate.sol",
@@ -1364,7 +1235,6 @@ function findFirstFilePath(nodes: RepoNode[]): string | undefined {
     }
   }
 
-  // Fallback to the first file found if none of the preferred files exist
   for (const n of nodes) {
     if (n.type === "file") return n.path;
     if (n.children) {
@@ -1375,7 +1245,6 @@ function findFirstFilePath(nodes: RepoNode[]): string | undefined {
   return undefined;
 }
 
-// Helper function to recursively find a specific path in the tree
 function findPathInTree(node: RepoNode, targetPath: string): string | undefined {
   if (node.path === targetPath) {
     return node.path;
@@ -1389,11 +1258,4 @@ function findPathInTree(node: RepoNode, targetPath: string): string | undefined 
   return undefined;
 }
 
-// Wrap with NotificationProvider
-export default function Home() {
-  return (
-    <NotificationProvider>
-      <HomeContent />
-    </NotificationProvider>
-  );
-}
+

@@ -6,6 +6,79 @@ import { Brand } from "@/components/brand";
 import { useTheme } from "next-themes";
 import { Sun, Moon, ArrowRight, Shield, Eye, Layers, Cpu, Terminal, Lock, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Joyride, { CallBackProps, Step } from "react-joyride";
+import { useEffect, useState } from "react";
+
+const ONBOARDING_KEY = "qasly_onboarding_complete";
+
+const onboardingSteps: Step[] = [
+  {
+    target: "body",
+    placement: "center",
+    title: "Welcome to Qasly Labs!",
+    content: "This interactive tour will guide you through the main features.",
+    disableBeacon: true,
+  },
+  {
+    target: ".sidebar, aside, nav[role='navigation']",
+    title: "Navigation Sidebar",
+    content: "Use the sidebar to access the code editor, audit reports, chat, and settings.",
+    placement: "right",
+  },
+  {
+    target: ".CodeEditor, .monaco-editor",
+    title: "Code Editor",
+    content: "Edit and review your code here. Security findings will be highlighted inline.",
+    placement: "top",
+  },
+  {
+    target: ".AuditPanel, .audit-panel",
+    title: "Audit Panel",
+    content: "View AI-generated security audit results and rich visualizations here.",
+    placement: "left",
+  },
+  {
+    target: ".SettingsSheet, .settings-sheet",
+    title: "Settings",
+    content: "Configure integrations, API keys, and preferences in the settings panel.",
+    placement: "left",
+  },
+];
+
+function OnboardingTour() {
+  const [run, setRun] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && !localStorage.getItem(ONBOARDING_KEY)) {
+      setRun(true);
+    }
+  }, []);
+
+  const handleJoyrideCallback = (data: CallBackProps) => {
+    const { status, index, type } = data;
+    if (status === "finished" || status === "skipped") {
+      setRun(false);
+      localStorage.setItem(ONBOARDING_KEY, "1");
+    } else if (typeof index === "number") {
+      setStepIndex(index);
+    }
+  };
+
+  return (
+    <Joyride
+      steps={onboardingSteps}
+      run={run}
+      stepIndex={stepIndex}
+      continuous
+      showSkipButton
+      showProgress
+      disableScrolling
+      styles={{ options: { zIndex: 9999 } }}
+      callback={handleJoyrideCallback}
+    />
+  );
+}
 
 type HomepageProps = {
   onEnterEditor: () => void;
@@ -35,7 +108,9 @@ export function Homepage({ onEnterEditor }: HomepageProps) {
   }, []);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-background via-background to-muted/10 relative">
+    <>
+      <OnboardingTour />
+      <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-background via-background to-muted/10 relative">
       {/* Animated Background */}
       <div 
         className="fixed inset-0 opacity-30 pointer-events-none"
@@ -171,6 +246,7 @@ export function Homepage({ onEnterEditor }: HomepageProps) {
         </div>
       </footer>
     </div>
+    </>
   );
 }
 

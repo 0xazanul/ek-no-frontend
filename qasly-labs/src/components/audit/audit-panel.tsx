@@ -5,6 +5,81 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { RefreshCcw } from "lucide-react";
+import {
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, XAxis, YAxis
+} from "recharts";
+
+// Example findings data for visualization
+const findingsData = [
+  { severity: "Critical", count: 0 },
+  { severity: "High", count: 0 },
+  { severity: "Medium", count: 3 },
+  { severity: "Low", count: 1 },
+];
+
+const findingTypes = [
+  { type: "Input Validation", count: 1 },
+  { type: "Error Handling", count: 1 },
+  { type: "Dependency Hygiene", count: 1 },
+  { type: "Outdated Package", count: 1 },
+];
+
+const SEVERITY_COLORS: Record<string, string> = {
+  Critical: "#e11d48",
+  High: "#f59e42",
+  Medium: "#fbbf24",
+  Low: "#10b981",
+};
+
+// Custom legend for severity
+function SeverityLegend() {
+  return (
+    <div className="flex flex-wrap gap-3 justify-center mt-2">
+      {findingsData.map((entry) => (
+        <div key={entry.severity} className="flex items-center gap-1 text-xs">
+          <span style={{ background: SEVERITY_COLORS[entry.severity], width: 12, height: 12, borderRadius: 3, display: 'inline-block' }} />
+          <span>{entry.severity}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SeverityPieChart() {
+  return (
+    <ResponsiveContainer width="100%" height={180}>
+      <PieChart>
+        <Pie
+          data={findingsData}
+          dataKey="count"
+          nameKey="severity"
+          cx="50%"
+          cy="50%"
+          outerRadius={60}
+          label={({ name, percent }: { name: string; percent: number }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+        >
+          {findingsData.map((entry, idx) => (
+            <Cell key={`cell-${idx}`} fill={SEVERITY_COLORS[entry.severity] || "#8884d8"} />
+          ))}
+        </Pie>
+        <Tooltip />
+      </PieChart>
+    </ResponsiveContainer>
+  );
+}
+
+function FindingTypeBarChart() {
+  return (
+    <ResponsiveContainer width="100%" height={180}>
+      <BarChart data={findingTypes} layout="vertical" margin={{ left: 20, right: 20, top: 10, bottom: 10 }}>
+        {/* <XAxis type="number" hide /> */}
+        {/* <YAxis dataKey="type" type="category" width={120} /> */}
+        <Bar dataKey="count" fill="#6366f1" radius={[0, 8, 8, 0]} barSize={18} />
+        <Tooltip />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
 
 type AuditPanelProps = {
   className?: string;
@@ -92,6 +167,18 @@ export function AuditPanel({ className }: AuditPanelProps) {
             <RefreshCcw className="size-4 mr-1" />
             Rerun
           </Button>
+        </div>
+      </div>
+      {/* Charts Section */}
+      <div className="flex flex-col md:flex-row gap-6 p-4 pb-0">
+        <div className="flex-1 min-w-[220px] bg-background/60 rounded-lg border p-4 flex flex-col items-center">
+          <div className="font-semibold mb-2 text-sm">Severity Distribution</div>
+          <SeverityPieChart />
+          <SeverityLegend />
+        </div>
+        <div className="flex-1 min-w-[220px] bg-background/60 rounded-lg border p-4 flex flex-col items-center">
+          <div className="font-semibold mb-2 text-sm">Finding Types</div>
+          <FindingTypeBarChart />
         </div>
       </div>
       <ScrollArea className="flex-1" viewportRef={containerRef}>
