@@ -22,9 +22,10 @@ type FileExplorerProps = {
   activePath?: string;
   isConnecting?: boolean;
   connectionError?: string;
+  isCollapsed?: boolean; // New prop
 };
 
-export function FileExplorer({ tree, onSelect, onConnect, className, activePath, isConnecting = false, connectionError }: FileExplorerProps) {
+export function FileExplorer({ tree, onSelect, onConnect, className, activePath, isConnecting = false, connectionError, isCollapsed = false }: FileExplorerProps) {
   const [repoUrl, setRepoUrl] = React.useState("");
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -52,24 +53,47 @@ export function FileExplorer({ tree, onSelect, onConnect, className, activePath,
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase();
     switch (ext) {
-      case 'js': case 'jsx': case 'ts': case 'tsx':
-        return '🟨';
-      case 'sol':
-        return '🔷';
-      case 'py':
-        return '🐍';
-      case 'go':
-        return '🐹';
-      case 'php':
-        return '🐘';
-      case 'rb':
-        return '💎';
-      case 'md':
-        return '📝';
-      case 'json':
-        return '📋';
-      default:
-        return '📄';
+      // Programming Languages
+      case 'js': return '🟨';     // JavaScript
+      case 'jsx': return '🟦';    // React JSX
+      case 'ts': return '🔷';     // TypeScript
+      case 'tsx': return '🔹';    // React TypeScript
+      case 'py': return '🐍';     // Python
+      case 'go': return '🐹';     // Go
+      case 'rs': return '🦀';     // Rust
+      case 'java': return '☕';    // Java
+      case 'kt': return '🟣';     // Kotlin
+      case 'swift': return '🍎';  // Swift
+      case 'php': return '🐘';    // PHP
+      case 'rb': return '💎';     // Ruby
+      
+      // Smart Contract Languages
+      case 'sol': return '🔒';    // Solidity
+      case 'move': return '🟢';   // Move
+      
+      // Web Technologies
+      case 'html': return '🌐';   // HTML
+      case 'css': return '🎨';    // CSS
+      case 'scss': return '🎨';   // SCSS
+      case 'less': return '🎨';   // LESS
+      
+      // Configuration and Data Files
+      case 'json': return '📋';   // JSON
+      case 'yaml': return '📄';   // YAML
+      case 'yml': return '📄';    // YAML
+      case 'toml': return '📄';   // TOML
+      case 'xml': return '📄';    // XML
+      
+      // Markdown and Documentation
+      case 'md': return '📝';     // Markdown
+      case 'markdown': return '📝'; // Markdown
+      
+      // Compiled/Binary Files
+      case 'exe': return '💻';    // Executable
+      case 'dll': return '🧩';    // Dynamic Library
+      
+      // Fallback
+      default: return '📄';       // Generic file
     }
   };
 
@@ -91,52 +115,57 @@ export function FileExplorer({ tree, onSelect, onConnect, className, activePath,
       <div className="p-4 border-b bg-muted/20">
         <div className="flex items-center gap-3 mb-3">
           <GitBranch className="size-4 text-muted-foreground" />
-          <span className="text-micro text-muted-foreground">Repository</span>
+          {!isCollapsed && <span className="text-micro text-muted-foreground">Repository</span>}
           {tree.length > 0 && (
-            <div className="ml-auto flex items-center gap-1 text-xs text-green-600">
+            <div className={cn(
+              "ml-auto flex items-center gap-1 text-xs text-green-600",
+              isCollapsed ? "hidden" : ""
+            )}>
               <div className="size-1.5 rounded-full bg-green-500" />
               {tree.reduce((count, node) => count + (node.children?.length || 0) + 1, 0)} files
             </div>
           )}
         </div>
-        <div className="space-y-2">
-          <div className="flex gap-2">
-            <Input
-              placeholder="https://github.com/org/repo"
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
-              className="h-9 text-[13px] focus-surgical transition-surgical"
-              disabled={isConnecting}
-            />
-            <Button 
-              size="sm" 
-              className="h-9 px-3 transition-surgical focus-surgical" 
-              onClick={() => onConnect(repoUrl)}
-              disabled={isConnecting || !repoUrl.trim()}
-            >
-              {isConnecting ? (
-                <Loader2 className="size-4 mr-2 animate-spin" />
-              ) : (
-                <Link2 className="size-4 mr-2" />
-              )}
-              {isConnecting ? 'Connecting...' : 'Connect'}
-            </Button>
+        {!isCollapsed && (
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <Input
+                placeholder="https://github.com/org/repo"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                className="h-9 text-[13px] focus-surgical transition-surgical"
+                disabled={isConnecting}
+              />
+              <Button 
+                size="sm" 
+                className="h-9 px-3 transition-surgical focus-surgical" 
+                onClick={() => onConnect(repoUrl)}
+                disabled={isConnecting || !repoUrl.trim()}
+              >
+                {isConnecting ? (
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                ) : (
+                  <Link2 className="size-4 mr-2" />
+                )}
+                {isConnecting ? 'Connecting...' : 'Connect'}
+              </Button>
+            </div>
+            {connectionError && (
+              <div className="flex items-center gap-2 text-xs text-destructive bg-red-50/50 border border-red-200/50 rounded-md px-2 py-1">
+                <AlertCircle className="size-3" />
+                {connectionError}
+              </div>
+            )}
+            {tree.length > 0 && !connectionError && (
+              <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50/50 border border-green-200/50 rounded-md px-2 py-1">
+                <CheckCircle2 className="size-3" />
+                Connected successfully
+              </div>
+            )}
           </div>
-          {connectionError && (
-            <div className="flex items-center gap-2 text-xs text-destructive bg-red-50/50 border border-red-200/50 rounded-md px-2 py-1">
-              <AlertCircle className="size-3" />
-              {connectionError}
-            </div>
-          )}
-          {tree.length > 0 && !connectionError && (
-            <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50/50 border border-green-200/50 rounded-md px-2 py-1">
-              <CheckCircle2 className="size-3" />
-              Connected successfully
-            </div>
-          )}
-        </div>
+        )}
       </div>
-      {tree.length > 0 && (
+      {tree.length > 0 && !isCollapsed && (
         <div className="p-4 border-b bg-muted/10">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-muted-foreground" />
@@ -164,16 +193,24 @@ export function FileExplorer({ tree, onSelect, onConnect, className, activePath,
               <div className="size-12 rounded-full bg-muted/20 flex items-center justify-center mb-3">
                 <GitBranch className="size-6 text-muted-foreground" />
               </div>
-              <div className="text-sm text-muted-foreground mb-2">No repository connected</div>
-              <div className="text-xs text-muted-foreground/70">Enter a GitHub URL above to start</div>
+              {!isCollapsed && (
+                <div className="text-sm text-muted-foreground mb-2">No repository connected</div>
+              )}
+              {!isCollapsed && (
+                <div className="text-xs text-muted-foreground/70">Enter a GitHub URL above to start</div>
+              )}
             </div>
           ) : filteredTree.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <div className="size-12 rounded-full bg-muted/20 flex items-center justify-center mb-3">
                 <Search className="size-6 text-muted-foreground" />
               </div>
-              <div className="text-sm text-muted-foreground mb-2">No files found</div>
-              <div className="text-xs text-muted-foreground/70">Try a different search term</div>
+              {!isCollapsed && (
+                <div className="text-sm text-muted-foreground mb-2">No files found</div>
+              )}
+              {!isCollapsed && (
+                <div className="text-xs text-muted-foreground/70">Try a different search term</div>
+              )}
             </div>
           ) : (
             <Tree 
@@ -184,6 +221,7 @@ export function FileExplorer({ tree, onSelect, onConnect, className, activePath,
               onSelect={onSelect}
               activePath={activePath}
               getFileIcon={getFileIcon}
+              isCollapsed={isCollapsed} // Pass collapsed state to Tree
             />
           )}
         </div>
@@ -200,6 +238,7 @@ function Tree({
   onSelect,
   activePath,
   getFileIcon,
+  isCollapsed, // New prop
 }: {
   nodes: RepoNode[];
   pathPrefix: string;
@@ -208,6 +247,7 @@ function Tree({
   onSelect: (p: string) => void;
   activePath?: string;
   getFileIcon?: (fileName: string) => string;
+  isCollapsed?: boolean; // New prop
 }) {
   return (
     <ul className="space-y-px text-sm">
@@ -226,10 +266,12 @@ function Tree({
                 ) : (
                   <Folder className="size-4 text-amber-600 flex-shrink-0 transition-transform group-hover:scale-110" />
                 )}
-                <span className="text-surgical truncate flex-1">{node.name}</span>
-                <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                  {node.children?.length || 0}
-                </span>
+                {!isCollapsed && <span className="text-surgical truncate flex-1">{node.name}</span>}
+                {!isCollapsed && (
+                  <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                    {node.children?.length || 0}
+                  </span>
+                )}
               </button>
               {isOpen && node.children && node.children.length > 0 && (
                 <div className="ml-6 border-l border-border/50 pl-3 mt-1">
@@ -241,6 +283,7 @@ function Tree({
                     onSelect={onSelect}
                     activePath={activePath}
                     getFileIcon={getFileIcon}
+                    isCollapsed={isCollapsed}
                   />
                 </div>
               )}
@@ -259,8 +302,8 @@ function Tree({
               onClick={() => onSelect(id)}
             >
               <span className="text-lg flex-shrink-0 transition-transform group-hover:scale-110">{getFileIcon?.(node.name) || '📄'}</span>
-              <span className="text-surgical truncate flex-1">{node.name}</span>
-              {activePath === id && (
+              {!isCollapsed && <span className="text-surgical truncate flex-1">{node.name}</span>}
+              {activePath === id && !isCollapsed && (
                 <div className="size-1.5 rounded-full bg-primary animate-pulse" />
               )}
             </button>

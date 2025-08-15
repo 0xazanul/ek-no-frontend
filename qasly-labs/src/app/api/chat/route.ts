@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ChatRequestSchema, validateRequest } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -162,17 +163,26 @@ Missing role checks allow unauthorized actions.`;
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}));
-  const messages: { role: "user" | "assistant"; content: string }[] = body?.messages ?? [];
-  const currentFile: string | undefined = body?.currentFile;
-  const source: string | undefined = body?.code;
-  const language = currentFile ? getLanguageFromPath(currentFile) : undefined;
+  try {
+    const body = await req.json();
+    
+    // Validate request body using Zod schema
+    const validation = validateRequest(ChatRequestSchema, body);
+    if (!validation.success) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
+    }
+    
+    const { messages, currentFile, code: source } = validation.data;
+    const language = currentFile ? getLanguageFromPath(currentFile) : undefined;
 
-  const last = messages[messages.length - 1]?.content?.trim() || "";
-  const cmd = last.startsWith("/") ? last.slice(1).split(/\s+/)[0] : "";
+    const last = messages[messages.length - 1]?.content?.trim() || "";
+    const cmd = last.startsWith("/") ? last.slice(1).split(/\s+/)[0] : "";
 
-  const reply = replyForCommand(cmd || "deep-research", currentFile, language, source);
-  return NextResponse.json({ reply });
+    const reply = replyForCommand(cmd || "deep-research", currentFile, language, source);
+    return NextResponse.json({ reply });
+  } catch (error) {
+    return NextResponse.json({ error: "Invalid request format" }, { status: 400 });
+  }
 }
 
 

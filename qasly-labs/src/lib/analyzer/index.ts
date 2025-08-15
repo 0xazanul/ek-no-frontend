@@ -1,6 +1,6 @@
 import { Finding } from "@/types/finding";
-import { analyzeSolidity } from "@/lib/analyzer/rules/solidity";
-import { analyzeJavascript } from "@/lib/analyzer/rules/javascript";
+import { scanDependencies } from "@/lib/analyzer/trivy";
+import { runSemgrepAnalysis } from "@/lib/analyzer/semgrep"; // New import
 
 export function inferLanguageFromPath(path: string | undefined): string {
   if (!path) return "unknown";
@@ -12,21 +12,28 @@ export function inferLanguageFromPath(path: string | undefined): string {
     py: "python",
     go: "go",
     php: "php",
+    java: "java", // Added Java
+    rb: "ruby",   // Added Ruby
+    cs: "csharp", // Added C#
+    c: "c",     // Added C
+    cpp: "cpp",   // Added C++
   };
   return map[ext || ""] || "unknown";
 }
 
-export function analyzeFile(path: string, source: string): Finding[] {
-  const lang = inferLanguageFromPath(path);
-  switch (lang) {
-    case "solidity":
-      return analyzeSolidity(path, source);
-    case "javascript":
-      return analyzeJavascript(path, source);
-    // future: typescript/python/go/php
-    default:
-      return [];
+export async function analyzeFile(path: string, source: string): Promise<Finding[]> {
+  // Check if this is a dependency file that should be scanned for vulnerabilities
+  if (path.endsWith("package.json") || path.endsWith("requirements.txt") || path.endsWith("go.mod") || path.endsWith("pom.xml") || path.endsWith("build.gradle")) {
+    return await scanDependencies(path, source);
   }
+
+  // Use Semgrep for all other code analysis
+  const lang = inferLanguageFromPath(path);
+  if (lang === "unknown") {
+    console.warn(`Unknown language for path: ${path}, skipping Semgrep analysis.`);
+    return [];
+  }
+  return await runSemgrepAnalysis(path, source, lang);
 }
 
 

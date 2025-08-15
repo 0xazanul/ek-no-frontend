@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
 import simpleGit from "simple-git";
+import { RepoConnectSchema, validateRequest } from "@/lib/validation";
 
 type RepoNode = {
   name: string;
@@ -50,17 +51,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 });
   }
   
-  const url: string | undefined = body?.url;
+  // Validate request body using Zod schema
+  const validation = validateRequest(RepoConnectSchema, body);
+  if (!validation.success) {
+    return NextResponse.json({ error: validation.error }, { status: 400 });
+  }
+  
+  const { url } = validation.data;
   // If no URL provided, use bundled sample repo under public
   const usingSample = !url || url.trim() === "";
-  
-  // Validate GitHub URL format
-  if (!usingSample && url) {
-    const githubUrlPattern = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/;
-    if (!githubUrlPattern.test(url.trim())) {
-      return NextResponse.json({ error: "Please provide a valid GitHub repository URL (e.g., https://github.com/owner/repo)" }, { status: 400 });
-    }
-  }
 
   const repoBase = path.join(os.tmpdir(), "qasly-repos");
   await fs.mkdir(repoBase, { recursive: true });
@@ -70,17 +69,31 @@ export async function POST(req: NextRequest) {
 
   try {
     if (!usingSample) {
-      const git = simpleGit();
+      // Configure git with security-focused options
+      const git = simpleGit({
+        timeout: {
+          block: 30000, // 30 second timeout for operations
+        },
+        maxConcurrentProcesses: 1, // Limit concurrent git processes
+      });
       
       try {
         // Check if repo directory already exists
         await fs.access(repoDir);
         console.log(`Repository already exists at ${repoDir}, pulling latest changes...`);
-        await git.cwd(repoDir).pull();
+        
+        // Safer pull with depth limit
+        await git.cwd(repoDir).pull('origin', 'main', ['--depth', '1']);
       } catch (accessError) {
         console.log(`Cloning repository from ${url} to ${repoDir}...`);
         try {
-          await git.clone(url!.trim(), repoDir);
+          // Shallow clone with additional security options
+          await git.clone(url!.trim(), repoDir, [
+            '--depth', '1',           // Shallow clone to limit data transfer
+            '--single-branch',        // Only clone the default branch
+            '--no-tags',             // Don't fetch tags
+            '--recurse-submodules=no' // Don't clone submodules
+          ]);
         } catch (cloneError: any) {
           console.error('Git clone error:', cloneError);
           

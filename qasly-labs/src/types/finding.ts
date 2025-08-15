@@ -9,6 +9,13 @@ export type Finding = {
   description: string;
   suggestedFix?: string;
   ruleId?: string;
+  // OSV specific fields
+  osvId?: string;
+  packageName?: string;
+  packageVersion?: string;
+  packageEcosystem?: string;
+  cveId?: string;
+  references?: Array<{url: string, type: string}>;
 };
 
 
