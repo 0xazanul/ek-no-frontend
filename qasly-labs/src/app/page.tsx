@@ -22,7 +22,7 @@ import {
   Users, Share2, History, Search, Download, ChevronLeft, Settings
 } from "lucide-react";
 import { AuditPanel } from "@/components/audit/audit-panel";
-import SettingsSheet from "@/components/settings/settings-sheet";
+import { SettingsSheet } from "@/components/settings/settings-sheet";
 
 type Message = { id: string; role: "user" | "assistant"; content: string };
 
