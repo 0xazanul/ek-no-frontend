@@ -19,8 +19,10 @@ import { useTheme } from "next-themes";
 import { generateId, cn } from "@/lib/utils";
 import { 
   Sun, Moon, ChevronRight, Package, Shield, AlertCircle, 
-  Users, Share2, History, Search, Download, ChevronLeft
+  Users, Share2, History, Search, Download, ChevronLeft, Settings
 } from "lucide-react";
+import { AuditPanel } from "@/components/audit/audit-panel";
+import SettingsSheet from "@/components/settings/settings-sheet";
 
 type Message = { id: string; role: "user" | "assistant"; content: string };
 
@@ -253,7 +255,7 @@ function HomeContent() {
       await new Promise(resolve => setTimeout(resolve, 100));
       
       // Handle sample repo files with content from specific paths
-      if (path.startsWith('contracts/') || path.startsWith('web/') || path.startsWith('backend/') || path.startsWith('.github/') || path === 'package.json' || path === 'requirements.txt' || path === 'go.mod' || path === 'pom.xml' || path === 'build.gradle') {
+      if (path.startsWith('contracts/') || path.startsWith('web/') || path.startsWith('backend/') || path.startsWith('.github/') || path === 'package.json' || path === 'requirements.txt' || path === 'go.mod' || path === 'README.md') {
         let content = '';
         switch (path) {
           case 'contracts/UnsafeDelegate.js':
@@ -564,21 +566,7 @@ h1 {
             setLanguage('css');
             break;
           case 'web/app.js':
-            content = `document.getElementById('myButton').addEventListener('click', () => {
-    alert('Button clicked!');
-});
-
-// VULN: Example of an insecure direct object reference (IDOR) if not properly handled server-side
-async function fetchUserData(userId) {
-    // In a real application, this would fetch from an API
-    // If server-side doesn\'t validate userId against authenticated user, it\'s an IDOR
-    const response = await fetch(\`/api/users/\${userId}\`);
-    const data = await response.json();
-    console.log('User data:', data);
-}
-
-fetchUserData(123); // Example usage
-`;
+            content = `document.getElementById('myButton').addEventListener('click', () => {\n    alert('Button clicked!');\n});\n\n// VULN: Example of an insecure direct object reference (IDOR) if not properly handled server-side\nasync function fetchUserData(userId) {\n    // In a real application, this would fetch from an API\n    // If server-side doesn\'t validate userId against authenticated user, it\'s an IDOR\n    const response = await fetch(\`\/api\/users\/\${userId}\`);\n    const data = await response.json();\n    console.log('User data:', data);\n}\n\nfetchUserData(123); // Example usage\n`;
             setLanguage('javascript');
             break;
           case 'backend/main.go':
@@ -784,7 +772,7 @@ jobs:
       
       if (!data.content && path.endsWith('.go')) {
         // Fallback content for Go files if API returns empty
-        setCode(`// ${path}\n// Go source file\n\npackage main\n\nimport (\n\t"fmt\"\n)\n\nfunc main() {\n\t// Your code here\n\tfmt.Println("Hello, world!")\n}`);
+        setCode(`// ${path}\n// Go source file\n\npackage main\n\nimport (\n\t"fmt"\n)\n\nfunc main() {\n\t// Your code here\n\tfmt.Println("Hello, world!")\n}`);
         setLanguage("go");
       } else if (!data.content && path.endsWith('.sol')) {
         // Fallback content for Solidity files
@@ -1129,6 +1117,7 @@ jobs:
           >
             {(resolvedTheme ?? theme) === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </button>
+          <SettingsSheet onSave={handleSettingsSave} />
         </div>
       </div>
       <div className="flex-1 overflow-hidden">
@@ -1273,6 +1262,12 @@ jobs:
               {mode === "code" ? (
                 <div className="relative h-full flex">
                   <div className="flex-1">
+                    {/* Visual Summary Dashboard and Audit Summary */}
+                    {findings.length > 0 && (
+                      <div className="mb-4">
+                        <AuditPanel findings={findings} />
+                      </div>
+                    )}
                     <CodeEditor
                       ref={editorRef}
                       path={activePath}
