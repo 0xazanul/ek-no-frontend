@@ -12,6 +12,10 @@ import { Mail, Link2, Slack, Trash2, Edit2, Plus, X, Download, Info } from "luci
 import { Switch } from "@/components/ui/switch";
 import { Select as AppSelect, SelectTrigger as AppSelectTrigger, SelectValue as AppSelectValue, SelectContent as AppSelectContent, SelectItem as AppSelectItem } from "@/components/ui/select";
 import { toast } from "react-hot-toast";
+import { Loader2 } from "lucide-react";
+import { FaSlack, FaGithub, FaGitlab, FaBitbucket, FaDiscord, FaJira, FaTrello } from "react-icons/fa";
+import { SiZapier, SiNotion } from "react-icons/si";
+import { Globe, CheckCircle2, XCircle, ChevronDown, ChevronUp } from "lucide-react";
 
 type Props = {
   onSave: (v: { openaiApiKey?: string; model?: string }) => void;
@@ -23,6 +27,7 @@ const SECTIONS = [
   { key: "billing", label: "Billing & Pricing" },
   { key: "team", label: "Team Members" },
   { key: "audit", label: "Audit Logs" },
+  { key: "integrations", label: "Integrations" },
 ];
 
 export function SettingsSheet({ onSave }: Props) {
@@ -391,31 +396,36 @@ export function SettingsSheet({ onSave }: Props) {
 
   // Audit logs state
   const [auditLogs, setAuditLogs] = useState([
-    { id: 1, timestamp: "2024-06-12 10:01:23", user: "Alice Johnson", action: "Login", ip: "192.168.1.10", device: "Chrome on Mac", status: "Success", details: "Logged in from Berlin, DE" },
-    { id: 2, timestamp: "2024-06-12 10:05:12", user: "Bob Smith", action: "Change Password", ip: "192.168.1.11", device: "Safari on iPhone", status: "Success", details: "Password changed" },
-    { id: 3, timestamp: "2024-06-12 10:10:45", user: "Carol Lee", action: "Failed Login", ip: "192.168.1.12", device: "Edge on Windows", status: "Error", details: "Invalid password" },
-    { id: 4, timestamp: "2024-06-12 10:15:00", user: "David Kim", action: "Invite Member", ip: "192.168.1.13", device: "Chrome on Mac", status: "Success", details: "Invited emily.chen@company.com" },
-    { id: 5, timestamp: "2024-06-12 10:20:30", user: "Emily Chen", action: "Remove Member", ip: "192.168.1.14", device: "Firefox on Linux", status: "Warning", details: "Removed Bob Smith" },
-    { id: 6, timestamp: "2024-06-12 10:25:10", user: "Frank Müller", action: "Download Invoice", ip: "192.168.1.15", device: "Chrome on Windows", status: "Success", details: "Downloaded invoice-2024-06-01.csv" },
-    { id: 7, timestamp: "2024-06-12 10:30:00", user: "Grace Park", action: "Change Role", ip: "192.168.1.16", device: "Safari on Mac", status: "Success", details: "Changed Carol Lee to Admin" },
-    { id: 8, timestamp: "2024-06-12 10:35:00", user: "Hiro Tanaka", action: "Failed Login", ip: "192.168.1.17", device: "Chrome on Android", status: "Error", details: "Invalid password" },
+    { id: 1, eventId: 'evt-1', timestamp: "2024-06-12 10:01:23", user: "Alice Johnson", action: "Login", ip: "192.168.1.10", device: "Chrome on Mac", status: "Success", details: "Logged in from Berlin, DE", location: "Berlin, DE", userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" },
+    { id: 2, eventId: 'evt-2', timestamp: "2024-06-12 10:05:12", user: "Bob Smith", action: "Change Password", ip: "192.168.1.11", device: "Safari on iPhone", status: "Success", details: "Password changed", location: "London, UK", userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)" },
+    { id: 3, eventId: 'evt-3', timestamp: "2024-06-12 10:10:45", user: "Carol Lee", action: "Failed Login", ip: "192.168.1.12", device: "Edge on Windows", status: "Error", details: "Invalid password", location: "Paris, FR", userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+    { id: 4, eventId: 'evt-4', timestamp: "2024-06-12 10:15:00", user: "David Kim", action: "Invite Member", ip: "192.168.1.13", device: "Chrome on Mac", status: "Success", details: "Invited emily.chen@company.com", location: "Berlin, DE", userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" },
+    { id: 5, eventId: 'evt-5', timestamp: "2024-06-12 10:20:30", user: "Emily Chen", action: "Remove Member", ip: "192.168.1.14", device: "Firefox on Linux", status: "Warning", details: "Removed Bob Smith", location: "Munich, DE", userAgent: "Mozilla/5.0 (X11; Linux x86_64)" },
+    { id: 6, eventId: 'evt-6', timestamp: "2024-06-12 10:25:10", user: "Frank Müller", action: "Download Invoice", ip: "192.168.1.15", device: "Chrome on Windows", status: "Success", details: "Downloaded invoice-2024-06-01.csv", location: "Hamburg, DE", userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+    { id: 7, eventId: 'evt-7', timestamp: "2024-06-12 10:30:00", user: "Grace Park", action: "Change Role", ip: "192.168.1.16", device: "Safari on Mac", status: "Success", details: "Changed Carol Lee to Admin", location: "Seoul, KR", userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" },
+    { id: 8, eventId: 'evt-8', timestamp: "2024-06-12 10:35:00", user: "Hiro Tanaka", action: "Failed Login", ip: "192.168.1.17", device: "Chrome on Android", status: "Error", details: "Invalid password", location: "Tokyo, JP", userAgent: "Mozilla/5.0 (Linux; Android 11)" },
   ]);
-  const [auditFilters, setAuditFilters] = useState({ user: "", action: "", status: "", search: "", date: "" });
+  const [auditFilters, setAuditFilters] = useState({ user: 'all', action: 'all', status: 'all', search: '', date: '', onlyErrors: false, onlyMine: false });
   const [auditPage, setAuditPage] = useState(1);
   const [auditRowsPerPage] = useState(5);
   const [auditDetail, setAuditDetail] = useState<null | typeof auditLogs[0]>(null);
   const [auditDelete, setAuditDelete] = useState<null | number>(null);
+  const [clearAllConfirm, setClearAllConfirm] = useState(false);
+  // Assume current user is Alice Johnson for 'Show Only My Actions'
+  const currentUser = 'Alice Johnson';
 
   // Filtered and paginated logs
   const filteredLogs = auditLogs.filter(l =>
-    (!auditFilters.user || l.user === auditFilters.user) &&
-    (!auditFilters.action || l.action === auditFilters.action) &&
-    (!auditFilters.status || l.status === auditFilters.status) &&
+    (auditFilters.user === 'all' || l.user === auditFilters.user) &&
+    (auditFilters.action === 'all' || l.action === auditFilters.action) &&
+    (auditFilters.status === 'all' || l.status === auditFilters.status) &&
     (!auditFilters.date || l.timestamp.startsWith(auditFilters.date)) &&
     (!auditFilters.search ||
       l.user.toLowerCase().includes(auditFilters.search.toLowerCase()) ||
       l.action.toLowerCase().includes(auditFilters.search.toLowerCase()) ||
-      l.ip.includes(auditFilters.search))
+      l.ip.includes(auditFilters.search)) &&
+    (!auditFilters.onlyErrors || l.status === 'Error') &&
+    (!auditFilters.onlyMine || l.user === currentUser)
   );
   const paginatedLogs = filteredLogs.slice((auditPage - 1) * auditRowsPerPage, auditPage * auditRowsPerPage);
   const totalPages = Math.ceil(filteredLogs.length / auditRowsPerPage);
@@ -436,8 +446,13 @@ export function SettingsSheet({ onSave }: Props) {
   };
 
   // Refresh logs (mock)
+  const [auditLoading, setAuditLoading] = useState(false);
   const handleRefreshAudit = () => {
-    toast.success("Audit logs refreshed.");
+    setAuditLoading(true);
+    setTimeout(() => {
+      setAuditLoading(false);
+      toast.success("Audit logs refreshed.");
+    }, 1200);
   };
 
   // Delete log
@@ -462,6 +477,68 @@ export function SettingsSheet({ onSave }: Props) {
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
   }, []);
+
+  // Integrations state
+  const [integrations, setIntegrations] = useState([
+    { key: "slack", name: "Slack", icon: <FaSlack className="size-6 text-[#4A154B]" />, connected: false, description: "Send notifications and alerts to your Slack workspace." },
+    { key: "github", name: "GitHub", icon: <FaGithub className="size-6 text-black" />, connected: false, description: "Sync with GitHub repositories and PRs." },
+    { key: "gitlab", name: "GitLab", icon: <FaGitlab className="size-6 text-[#FC6D26]" />, connected: false, description: "Integrate with GitLab projects and pipelines." },
+    { key: "bitbucket", name: "Bitbucket", icon: <FaBitbucket className="size-6 text-[#205081]" />, connected: false, description: "Connect Bitbucket repos for automation." },
+    { key: "zapier", name: "Zapier", icon: <SiZapier className="size-6 text-[#FF4F00]" />, connected: false, description: "Automate workflows with Zapier." },
+    { key: "discord", name: "Discord", icon: <FaDiscord className="size-6 text-[#5865F2]" />, connected: false, description: "Send updates to Discord channels." },
+    { key: "jira", name: "Jira", icon: <FaJira className="size-6 text-[#0052CC]" />, connected: false, description: "Create and sync Jira issues." },
+    { key: "trello", name: "Trello", icon: <FaTrello className="size-6 text-[#0079BF]" />, connected: false, description: "Sync tasks with Trello boards." },
+    { key: "notion", name: "Notion", icon: <SiNotion className="size-6 text-black" />, connected: false, description: "Push data to Notion pages." },
+    { key: "webhook", name: "Webhooks", icon: <Link2 className="size-6 text-[#6366F1]" />, connected: true, description: "Send events to your own endpoints." },
+  ]);
+  const [integrationSearch, setIntegrationSearch] = useState("");
+  const [expandedIntegration, setExpandedIntegration] = useState<string | null>(null);
+  const [webhooks, setWebhooks] = useState([
+    { id: 1, url: "https://hooks.example.com/abc", status: "Active", lastDelivery: "2024-06-12 10:00", deliveries: 12 },
+    { id: 2, url: "https://hooks.example.com/xyz", status: "Error", lastDelivery: "2024-06-11 09:30", deliveries: 3 },
+  ]);
+  const [addWebhookModal, setAddWebhookModal] = useState(false);
+  const [newWebhookUrl, setNewWebhookUrl] = useState("");
+  const [webhookError, setWebhookError] = useState("");
+  const [testWebhookId, setTestWebhookId] = useState<number | null>(null);
+  const [deleteWebhookId, setDeleteWebhookId] = useState<number | null>(null);
+
+  // Integration connect/disconnect
+  const handleConnectIntegration = (key: string) => {
+    setIntegrations(list => list.map(i => i.key === key ? { ...i, connected: !i.connected } : i));
+    toast.success(`Integration ${integrations.find(i => i.key === key)?.connected ? 'disconnected' : 'connected'}.`);
+  };
+  // Webhook add
+  const handleAddWebhook = () => {
+    setWebhookError("");
+    if (!newWebhookUrl.match(/^https?:\/\//)) {
+      setWebhookError("Enter a valid URL starting with http(s)://");
+      return;
+    }
+    setWebhooks(list => [
+      ...list,
+      { id: Math.max(0, ...list.map(w => w.id)) + 1, url: newWebhookUrl, status: "Active", lastDelivery: "Never", deliveries: 0 },
+    ]);
+    setNewWebhookUrl("");
+    setAddWebhookModal(false);
+    toast.success("Webhook added.");
+  };
+  // Webhook delete
+  const handleDeleteWebhook = (id: number) => {
+    setWebhooks(list => list.filter(w => w.id !== id));
+    setDeleteWebhookId(null);
+    toast.success("Webhook deleted.");
+  };
+  // Webhook test
+  const handleTestWebhook = (id: number) => {
+    setTestWebhookId(id);
+    setTimeout(() => {
+      setTestWebhookId(null);
+      toast.success("Test delivery sent.");
+    }, 1200);
+  };
+  // Filtered integrations
+  const filteredIntegrations = integrations.filter(i => i.name.toLowerCase().includes(integrationSearch.toLowerCase()));
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -1092,36 +1169,41 @@ export function SettingsSheet({ onSave }: Props) {
               <div className="mt-8 flex flex-col gap-6 max-w-5xl">
                 {/* Filters/Search/Export/Refresh */}
                 <div className="flex flex-wrap gap-3 items-center mb-2">
-                  <Input placeholder="Search user, action, IP..." value={auditFilters.search} onChange={e => setAuditFilters(f => ({ ...f, search: e.target.value }))} className="w-48" />
-                  <Input type="date" value={auditFilters.date} onChange={e => setAuditFilters(f => ({ ...f, date: e.target.value }))} className="w-36" />
+                  <Input placeholder="Search user, action, IP..." value={auditFilters.search} onChange={e => setAuditFilters(f => ({ ...f, search: e.target.value }))} className="w-48" aria-label="Search logs" />
+                  <Input type="date" value={auditFilters.date} onChange={e => setAuditFilters(f => ({ ...f, date: e.target.value }))} className="w-36" aria-label="Filter by date" />
                   <Select value={auditFilters.user} onValueChange={v => setAuditFilters(f => ({ ...f, user: v }))}>
-                    <SelectTrigger className="w-36"><SelectValue placeholder="User" /></SelectTrigger>
+                    <SelectTrigger className="w-36" aria-label="Filter by user"><SelectValue placeholder="User" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Users</SelectItem>
+                      <SelectItem value="all">All Users</SelectItem>
                       {auditUsers.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <Select value={auditFilters.action} onValueChange={v => setAuditFilters(f => ({ ...f, action: v }))}>
-                    <SelectTrigger className="w-36"><SelectValue placeholder="Action" /></SelectTrigger>
+                    <SelectTrigger className="w-36" aria-label="Filter by action"><SelectValue placeholder="Action" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Actions</SelectItem>
+                      <SelectItem value="all">All Actions</SelectItem>
                       {auditActions.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <Select value={auditFilters.status} onValueChange={v => setAuditFilters(f => ({ ...f, status: v }))}>
-                    <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+                    <SelectTrigger className="w-36" aria-label="Filter by status"><SelectValue placeholder="Status" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Statuses</SelectItem>
+                      <SelectItem value="all">All Statuses</SelectItem>
                       {auditStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  <Button size="sm" variant={auditFilters.onlyErrors ? "default" : "outline"} onClick={() => setAuditFilters(f => ({ ...f, onlyErrors: !f.onlyErrors }))} aria-pressed={auditFilters.onlyErrors}>Show Only Errors</Button>
+                  <Button size="sm" variant={auditFilters.onlyMine ? "default" : "outline"} onClick={() => setAuditFilters(f => ({ ...f, onlyMine: !f.onlyMine }))} aria-pressed={auditFilters.onlyMine}>Show Only My Actions</Button>
                   <Button size="sm" variant="outline" onClick={handleExportAuditCSV}>Export CSV</Button>
-                  <Button size="sm" variant="ghost" onClick={handleRefreshAudit}>Refresh</Button>
+                  <Button size="sm" variant="ghost" onClick={handleRefreshAudit} disabled={auditLoading} aria-busy={auditLoading}>
+                    {auditLoading ? <Loader2 className="size-4 animate-spin" /> : "Refresh"}
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => setClearAllConfirm(true)}>Clear All Logs</Button>
                 </div>
                 {/* Audit Logs Table */}
                 <div className="overflow-x-auto rounded-lg shadow border bg-muted/30">
                   <table className="min-w-full text-xs text-left">
-                    <thead className="bg-muted/40">
+                    <thead className="bg-muted/40 sticky top-0 z-10" style={{position: 'sticky'}}>
                       <tr>
                         <th className="px-4 py-2 font-semibold">Timestamp</th>
                         <th className="px-4 py-2 font-semibold">User</th>
@@ -1130,33 +1212,50 @@ export function SettingsSheet({ onSave }: Props) {
                         <th className="px-4 py-2 font-semibold">Device</th>
                         <th className="px-4 py-2 font-semibold">Status</th>
                         <th className="px-4 py-2 font-semibold">Details</th>
+                        <th className="px-4 py-2 font-semibold">Event ID</th>
                         <th className="px-4 py-2 font-semibold">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {paginatedLogs.length === 0 && (
-                        <tr><td colSpan={8} className="px-4 py-4 text-center text-muted-foreground">No logs found.</td></tr>
+                      {auditLoading ? (
+                        <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground"><Loader2 className="mx-auto animate-spin size-6" /> Loading logs…</td></tr>
+                      ) : paginatedLogs.length === 0 ? (
+                        <tr><td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">
+                          <div className="flex flex-col items-center gap-2">
+                            <span className="text-3xl">🗒️</span>
+                            <span className="font-semibold text-base">No audit logs found</span>
+                            <span className="text-xs text-muted-foreground">Try adjusting your filters or refresh.</span>
+                          </div>
+                        </td></tr>
+                      ) : (
+                        paginatedLogs.map((log, idx) => (
+                          <tr key={log.id} className={`border-t border-muted/20 group transition-colors ${idx % 2 === 0 ? 'bg-background' : 'bg-muted/10'} hover:bg-primary/5 focus-within:bg-primary/10`} tabIndex={0}>
+                            <td className="px-4 py-2 align-middle">{log.timestamp}</td>
+                            <td className="px-4 py-2 flex items-center gap-2 align-middle">
+                              <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-primary/20 text-primary font-bold text-xs">{log.user.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2)}</span>
+                              {log.user}
+                            </td>
+                            <td className="px-4 py-2 align-middle">{log.action}</td>
+                            <td className="px-4 py-2 align-middle">{log.ip}</td>
+                            <td className="px-4 py-2 align-middle">{log.device}</td>
+                            <td className="px-4 py-2 align-middle">
+                              <span className={`inline-block px-2 py-1 rounded font-semibold ${log.status === 'Success' ? 'bg-green-100 text-green-700' : log.status === 'Warning' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{log.status}</span>
+                            </td>
+                            <td className="px-4 py-2 align-middle max-w-xs truncate cursor-pointer group/td" title={log.details} onClick={() => setAuditDetail(log)}>
+                              <span tabIndex={0} className="focus:outline-none" aria-label={log.details}>{log.details.length > 30 ? <span title={log.details}>{log.details.slice(0,30) + '…'}</span> : log.details}</span>
+                            </td>
+                            <td className="px-4 py-2 flex items-center gap-1 align-middle">
+                              <span className="font-mono text-xs" title="Event ID">{log.eventId}</span>
+                              <Button size="icon" variant="ghost" title="Copy Log ID" aria-label="Copy Log ID" onClick={() => {navigator.clipboard.writeText(log.eventId); toast.success('Log ID copied!');}}><span className="text-xs">📋</span></Button>
+                            </td>
+                            <td className="px-4 py-2 flex gap-1 align-middle">
+                              <Button size="icon" variant="ghost" title="View Details" aria-label="View Details" onClick={() => setAuditDetail(log)}><Info className="size-4" /></Button>
+                              <Button size="icon" variant="ghost" title="Download JSON" aria-label="Download JSON" onClick={() => {const blob = new Blob([JSON.stringify(log, null, 2)], {type: 'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `log-${log.eventId}.json`; a.click(); URL.revokeObjectURL(url); toast.success('Log downloaded as JSON.');}}><span className="text-xs">⬇️</span></Button>
+                              <Button size="icon" variant="ghost" title="Delete" aria-label="Delete Log" onClick={() => setAuditDelete(log.id)}><Trash2 className="size-4 text-destructive" /></Button>
+                            </td>
+                          </tr>
+                        ))
                       )}
-                      {paginatedLogs.map(log => (
-                        <tr key={log.id} className="border-t border-muted/20 group hover:bg-muted/20 transition-colors">
-                          <td className="px-4 py-2">{log.timestamp}</td>
-                          <td className="px-4 py-2 flex items-center gap-2">
-                            <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-primary/20 text-primary font-bold text-xs">{log.user.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2)}</span>
-                            {log.user}
-                          </td>
-                          <td className="px-4 py-2">{log.action}</td>
-                          <td className="px-4 py-2">{log.ip}</td>
-                          <td className="px-4 py-2">{log.device}</td>
-                          <td className="px-4 py-2">
-                            <span className={`inline-block px-2 py-1 rounded font-semibold ${log.status === 'Success' ? 'bg-green-100 text-green-700' : log.status === 'Warning' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{log.status}</span>
-                          </td>
-                          <td className="px-4 py-2 truncate max-w-xs cursor-pointer" title={log.details} onClick={() => setAuditDetail(log)}>{log.details.length > 30 ? log.details.slice(0,30) + '…' : log.details}</td>
-                          <td className="px-4 py-2 flex gap-1">
-                            <Button size="icon" variant="ghost" title="View Details" onClick={() => setAuditDetail(log)}><Info className="size-4" /></Button>
-                            <Button size="icon" variant="ghost" title="Delete" onClick={() => setAuditDelete(log.id)}><Trash2 className="size-4 text-destructive" /></Button>
-                          </td>
-                        </tr>
-                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -1178,8 +1277,12 @@ export function SettingsSheet({ onSave }: Props) {
                       <div className="mb-2"><span className="font-semibold">Device:</span> {auditDetail.device}</div>
                       <div className="mb-2"><span className="font-semibold">Status:</span> <span className={`inline-block px-2 py-1 rounded font-semibold ${auditDetail.status === 'Success' ? 'bg-green-100 text-green-700' : auditDetail.status === 'Warning' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{auditDetail.status}</span></div>
                       <div className="mb-2"><span className="font-semibold">Details:</span> {auditDetail.details}</div>
+                      <div className="mb-2"><span className="font-semibold">Location:</span> {auditDetail.location}</div>
+                      <div className="mb-2"><span className="font-semibold">User Agent:</span> <span className="break-all">{auditDetail.userAgent}</span></div>
+                      <div className="mb-2 flex items-center gap-2"><span className="font-semibold">Event ID:</span> <span className="font-mono text-xs">{auditDetail.eventId}</span> <Button size="icon" variant="ghost" title="Copy Log ID" aria-label="Copy Log ID" onClick={() => {navigator.clipboard.writeText(auditDetail.eventId); toast.success('Log ID copied!');}}><span className="text-xs">📋</span></Button></div>
                       <div className="flex gap-3 justify-end mt-4">
                         <Button variant="outline" onClick={() => setAuditDetail(null)} className="px-5">Close</Button>
+                        <Button size="sm" variant="ghost" onClick={() => {const blob = new Blob([JSON.stringify(auditDetail, null, 2)], {type: 'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `log-${auditDetail.eventId}.json`; a.click(); URL.revokeObjectURL(url); toast.success('Log downloaded as JSON.');}}>Download JSON</Button>
                       </div>
                     </div>
                   </div>
@@ -1193,6 +1296,113 @@ export function SettingsSheet({ onSave }: Props) {
                       <div className="flex gap-3 justify-end">
                         <Button variant="destructive" onClick={() => handleDeleteAudit(auditDelete)} className="px-5">Delete</Button>
                         <Button variant="outline" onClick={() => setAuditDelete(null)} className="px-5">Cancel</Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {/* Clear All Logs Confirmation */}
+                {clearAllConfirm && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                    <div className="bg-background border rounded-lg shadow-xl p-8 max-w-sm w-full animate-in fade-in duration-200">
+                      <div className="font-semibold text-lg mb-2">Clear All Logs</div>
+                      <div className="text-muted-foreground mb-6">Are you sure you want to clear all audit logs? This action cannot be undone.</div>
+                      <div className="flex gap-3 justify-end">
+                        <Button variant="destructive" onClick={() => { setAuditLogs([]); setClearAllConfirm(false); toast.success('All logs cleared.'); }} className="px-5">Clear All</Button>
+                        <Button variant="outline" onClick={() => setClearAllConfirm(false)} className="px-5">Cancel</Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+          {selected === "integrations" && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="text-lg font-semibold tracking-tight">Integrations</SheetTitle>
+              </SheetHeader>
+              <div className="mt-8 flex flex-col gap-8 max-w-5xl">
+                {/* Search Bar */}
+                <div className="flex items-center gap-3 mb-2">
+                  <Input placeholder="Search integrations..." value={integrationSearch} onChange={e => setIntegrationSearch(e.target.value)} className="w-64" aria-label="Search integrations" />
+                  <Button size="sm" variant="outline" onClick={() => setIntegrationSearch("")}>Clear</Button>
+                  <Button size="sm" variant="outline" onClick={() => setAddWebhookModal(true)}><Plus className="size-4 mr-1" /> Add Webhook</Button>
+                </div>
+                {/* Integrations Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                  {filteredIntegrations.map(integration => (
+                    <div key={integration.key} className="bg-muted/30 border rounded-lg p-5 flex flex-col gap-3 shadow relative">
+                      <div className="flex items-center gap-3 mb-1">
+                        {integration.icon}
+                        <span className="font-semibold text-base">{integration.name}</span>
+                        <span className={`ml-auto px-2 py-0.5 rounded text-xs font-semibold ${integration.connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>{integration.connected ? 'Connected' : 'Not Connected'}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground mb-2">{integration.description}</div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant={integration.connected ? 'destructive' : 'default'} onClick={() => handleConnectIntegration(integration.key)}>
+                          {integration.connected ? 'Disconnect' : 'Connect'}
+                        </Button>
+                        <Button size="icon" variant="ghost" aria-label="Show Details" onClick={() => setExpandedIntegration(expandedIntegration === integration.key ? null : integration.key)}>
+                          {expandedIntegration === integration.key ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                        </Button>
+                      </div>
+                      {expandedIntegration === integration.key && (
+                        <div className="mt-3 bg-background border rounded p-3 text-xs shadow-inner">
+                          <div className="mb-2 font-semibold">Integration Details</div>
+                          <div className="mb-1">{integration.name} lets you {integration.description.toLowerCase()}</div>
+                          <div className="mb-1">Status: <span className={`font-semibold ${integration.connected ? 'text-green-700' : 'text-gray-700'}`}>{integration.connected ? 'Connected' : 'Not Connected'}</span></div>
+                          <div className="mb-1">Setup instructions and settings would go here.</div>
+                          <div className="mb-1">Last connected: {integration.connected ? '2024-06-12' : 'Never'}</div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {/* Webhooks Management */}
+                <div className="bg-muted/30 border rounded-lg p-6 shadow">
+                  <div className="font-semibold mb-4 flex items-center gap-2"><Link2 className="size-5 text-[#6366F1]" /> Webhooks</div>
+                  <div className="flex flex-col gap-3">
+                    {webhooks.length === 0 && <div className="text-muted-foreground text-sm">No webhooks configured.</div>}
+                    {webhooks.map(w => (
+                      <div key={w.id} className="flex items-center gap-3 bg-background border rounded px-4 py-2">
+                        <span className="font-mono text-xs break-all">{w.url}</span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${w.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{w.status}</span>
+                        <span className="text-xs text-muted-foreground">Last: {w.lastDelivery}</span>
+                        <span className="text-xs text-muted-foreground">Deliveries: {w.deliveries}</span>
+                        <Button size="sm" variant="outline" onClick={() => handleTestWebhook(w.id)} disabled={testWebhookId === w.id}>
+                          {testWebhookId === w.id ? <Loader2 className="size-4 animate-spin" /> : 'Test'}
+                        </Button>
+                        <Button size="icon" variant="ghost" title="Delete" onClick={() => setDeleteWebhookId(w.id)}><Trash2 className="size-4 text-destructive" /></Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* Add Webhook Modal */}
+                {addWebhookModal && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                    <div className="bg-background border rounded-lg shadow-xl p-8 max-w-sm w-full animate-in fade-in duration-200">
+                      <div className="font-semibold text-lg mb-2">Add Webhook</div>
+                      <div className="flex flex-col gap-3 mb-2">
+                        <Label>Webhook URL</Label>
+                        <Input value={newWebhookUrl} onChange={e => setNewWebhookUrl(e.target.value)} placeholder="https://hooks.example.com/abc" />
+                        {webhookError && <div className="text-destructive text-xs">{webhookError}</div>}
+                      </div>
+                      <div className="flex gap-3 justify-end">
+                        <Button onClick={handleAddWebhook} className="px-5">Add</Button>
+                        <Button variant="outline" onClick={() => { setAddWebhookModal(false); setWebhookError(""); setNewWebhookUrl(""); }} className="px-5">Cancel</Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {/* Delete Webhook Confirmation */}
+                {deleteWebhookId && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                    <div className="bg-background border rounded-lg shadow-xl p-8 max-w-sm w-full animate-in fade-in duration-200">
+                      <div className="font-semibold text-lg mb-2">Delete Webhook</div>
+                      <div className="text-muted-foreground mb-6">Are you sure you want to delete this webhook?</div>
+                      <div className="flex gap-3 justify-end">
+                        <Button variant="destructive" onClick={() => handleDeleteWebhook(deleteWebhookId)} className="px-5">Delete</Button>
+                        <Button variant="outline" onClick={() => setDeleteWebhookId(null)} className="px-5">Cancel</Button>
                       </div>
                     </div>
                   </div>
