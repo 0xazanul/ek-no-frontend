@@ -58,7 +58,7 @@ export function middleware(request: NextRequest) {
   
   // Rate limiting for API routes
   if (request.nextUrl.pathname.startsWith('/api/')) {
-    const identifier = request.ip || request.headers.get('x-forwarded-for') || 'anonymous';
+    const identifier = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'anonymous';
     
     // Different limits for different endpoints
     let limit = 100; // Default requests per minute

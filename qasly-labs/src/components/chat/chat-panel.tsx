@@ -7,8 +7,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { Bot, UserRound, Send, FileText, Loader2 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
-import { CollapsibleMessage } from "@/components/chat/collapsible-message";
-import { TypewriterMarkdown } from "@/components/chat/typewriter-markdown";
 
 type Message = {
   id: string;
@@ -212,7 +210,7 @@ export function ChatPanel({ messages, onSend, className, showHeader = true, cont
                       </div>
                     </div>
                     <div className="max-w-[85%] rounded-2xl px-4 py-3 text-[14px] leading-6 bg-muted/60 text-foreground border border-border/50">
-                      <TypewriterMarkdown content={m.content} stopSignal={stopToken} />
+                      <MarkdownRenderer content={m.content} />
                     </div>
                   </div>
                 );
@@ -226,7 +224,7 @@ export function ChatPanel({ messages, onSend, className, showHeader = true, cont
                     </div>
                   </div>
                   <div className="max-w-[85%] rounded-2xl px-4 py-3 text-[14px] leading-6 bg-muted/60 text-foreground border border-border/50">
-                    <TypewriterMarkdown content={m.content} stopSignal={stopToken} />
+                    <MarkdownRenderer content={m.content} />
                   </div>
                 </div>
               );
@@ -320,17 +318,78 @@ export function ChatPanel({ messages, onSend, className, showHeader = true, cont
 }
 
 function DeepThinkingDisplay() {
+  const [text, setText] = React.useState('Analyzing');
+  const [dots, setDots] = React.useState('');
+  const [step, setStep] = React.useState(0);
+  
+  const thinkingSteps = [
+    'Reading code structure',
+    'Identifying patterns', 
+    'Checking for vulnerabilities',
+    'Analyzing data flow',
+    'Reviewing dependencies',
+    'Generating insights'
+  ];
+
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setDots(prev => prev.length >= 3 ? '' : prev + '.');
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  React.useEffect(() => {
+    const stepInterval = setInterval(() => {
+      setStep(prev => (prev + 1) % thinkingSteps.length);
+    }, 2000);
+    return () => clearInterval(stepInterval);
+  }, []);
+
   return (
-    <div className="rounded-2xl bg-muted/30 border border-border/50 p-4">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
-        <div className="size-1.5 rounded-full bg-muted-foreground animate-pulse" />
-        Analyzing...
+    <div className="space-y-3">
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <Loader2 className="animate-spin w-5 h-5 text-blue-500" />
+          <div className="absolute inset-0 rounded-full border-2 border-blue-200 animate-pulse" />
+        </div>
+        <div>
+          <div className="font-medium text-foreground">
+            {thinkingSteps[step]}{dots}
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">
+            Deep analysis in progress...
+          </div>
+        </div>
       </div>
       
-      <div className="space-y-2">
-        <div className="h-3 bg-muted/50 rounded animate-pulse" />
-        <div className="h-3 bg-muted/50 rounded animate-pulse w-3/4" />
-        <div className="h-3 bg-muted/50 rounded animate-pulse w-1/2" />
+      {/* Progress indicator */}
+      <div className="w-full bg-muted/30 rounded-full h-1.5">
+        <div 
+          className="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full transition-all duration-2000 ease-out"
+          style={{ width: `${((step + 1) / thinkingSteps.length) * 100}%` }}
+        />
+      </div>
+      
+      {/* Thinking steps preview */}
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        {thinkingSteps.map((stepText, idx) => (
+          <div 
+            key={idx}
+            className={cn(
+              "flex items-center gap-1.5 px-2 py-1 rounded text-xs",
+              idx <= step ? "bg-blue-50 text-blue-700 border border-blue-200" : "text-muted-foreground"
+            )}
+          >
+            {idx < step ? (
+              <div className="w-2 h-2 bg-green-500 rounded-full" />
+            ) : idx === step ? (
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+            ) : (
+              <div className="w-2 h-2 bg-muted-foreground/30 rounded-full" />
+            )}
+            <span className={idx <= step ? "font-medium" : ""}>{stepText}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

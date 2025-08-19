@@ -11,7 +11,6 @@ import { Brand } from "@/components/brand";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { Homepage } from "@/components/homepage";
 import { SecurityPanel } from "@/components/premium-features";
-import { CollaborationPanel } from "@/components/editor/collaboration-panel";
 import { FileHistory } from "@/components/editor/file-history";
 // Keyboard shortcuts removed as requested
 import { NotificationProvider, useNotification } from "@/components/ui/notification";
@@ -24,6 +23,7 @@ import {
 import { AuditPanel } from "@/components/audit/audit-panel";
 import { SettingsSheet } from "@/components/settings/settings-sheet";
 import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
+import { SingleChat } from "@/components/chat/chat-tabs";
 
 type Message = { id: string; role: "user" | "assistant"; content: string };
 
@@ -35,7 +35,6 @@ function HomeContent() {
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [mode, setMode] = React.useState<"code" | "chat" | "security">("code");
   const [showSecurityPanel, setShowSecurityPanel] = React.useState(false);
-  const [showCollaboration, setShowCollaboration] = React.useState(false);
   const [showFileHistory, setShowFileHistory] = React.useState(false);
   const [isConnecting, setIsConnecting] = React.useState(false);
   const [connectionError, setConnectionError] = React.useState<string | undefined>();
@@ -1063,14 +1062,6 @@ jobs:
             <History className="size-4" />
           </button>
           <button
-            aria-label="Toggle collaboration"
-            className="h-8 w-8 rounded-md border flex items-center justify-center transition-surgical focus-surgical"
-            onClick={() => setShowCollaboration(prev => !prev)}
-            title="Collaborate"
-          >
-            <Users className="size-4 text-primary" />
-          </button>
-          <button
             aria-label="Toggle theme"
             className="h-8 w-8 rounded-md border flex items-center justify-center transition-surgical focus-surgical"
             onClick={() => {
@@ -1292,13 +1283,6 @@ jobs:
                       />
                     </div>
                   )}
-                  {/* Collaboration Panel */}
-                  {showCollaboration && (
-                    <CollaborationPanel 
-                      onClose={() => setShowCollaboration(false)}
-                      path={activePath}
-                    />
-                  )}
                   {/* File History Panel */}
                   {showFileHistory && (
                     <FileHistory 
@@ -1310,11 +1294,7 @@ jobs:
               ) : mode === "security" ? (
                 <SecurityPanel />
               ) : (
-                <ChatPanel
-                  messages={messages}
-                  onSend={handleSend}
-                  showHeader={true}
-                />
+                <SingleChat activePath={activePath} code={code} />
               )}
               
               {/* Keyboard Shortcuts Dialog removed as requested */}
