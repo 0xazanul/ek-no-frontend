@@ -4,7 +4,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 export function MarkdownRenderer({ content, className }: { content: string; className?: string }) {
-  return <div className={cn("prose prose-sm max-w-none text-foreground", className)}>{render(content)}</div>;
+  return <div className={cn("prose prose-lg max-w-none text-foreground", className)}>{render(content)}</div>;
 }
 
 function render(text: string) {
@@ -13,13 +13,22 @@ function render(text: string) {
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
-
     if (line.startsWith("```") ) {
       const lang = line.slice(3).trim() || "text";
       const code: string[] = [];
       i++;
       while (i < lines.length && !lines[i].startsWith("```") ) { code.push(lines[i]); i++; }
       out.push(<CodeBlock key={`code-${i}`} lang={lang} code={code.join("\n")} />);
+    } else if (/^>{1,}/.test(line)) {
+      // Blockquote support
+      const quoteLines: string[] = [];
+      while (i < lines.length && /^>{1,}/.test(lines[i])) { quoteLines.push(lines[i].replace(/^>{1,}\s*/, "")); i++; }
+      i--;
+      out.push(
+        <blockquote key={`bq-${i}`} className="border-l-4 border-primary/60 bg-muted/30 px-4 py-2 my-3 italic text-muted-foreground">
+          {quoteLines.join(" ")}
+        </blockquote>
+      );
     } else if (/^#{1,3}\s+/.test(line)) {
       const level = (line.match(/^#+/)?.[0].length || 1) as 1|2|3;
       const Tag = (["h1","h2","h3"] as const)[level - 1];
@@ -40,6 +49,18 @@ function render(text: string) {
       while (i < lines.length && /^(-|•)\s+/.test(lines[i])) { items.push(lines[i].slice(2)); i++; }
       i--;
       out.push(<ul key={`ul-${i}`} className="list-disc list-inside space-y-1 my-2">{items.map((it, idx) => <li key={idx}>{it}</li>)}</ul>);
+    } else if (/`[^`]+`/.test(line)) {
+      // Inline code
+      const parts = line.split(/(`[^`]+`)/g);
+      out.push(
+        <p key={`p-${i}`} className="mb-3">
+          {parts.map((part, idx) =>
+            part.startsWith("`") && part.endsWith("`") ? (
+              <code key={idx} className="bg-muted/60 px-1 rounded text-sm font-mono text-primary">{part.slice(1, -1)}</code>
+            ) : part
+          )}
+        </p>
+      );
     } else {
       out.push(<p key={`p-${i}`} className="mb-3">{line || <span className="inline-block h-2" />}</p>);
     }

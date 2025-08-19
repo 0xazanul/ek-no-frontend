@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { AuditPanel } from "@/components/audit/audit-panel";
 import { SettingsSheet } from "@/components/settings/settings-sheet";
+import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
 
 type Message = { id: string; role: "user" | "assistant"; content: string };
 
@@ -46,6 +47,9 @@ function HomeContent() {
   const [globalError, setGlobalError] = React.useState<string | undefined>();
   const [isOnline, setIsOnline] = React.useState(true);
   const [findings, setFindings] = React.useState<Finding[]>([]);
+  const [aiReasoning, setAiReasoning] = React.useState<string>("");
+  const [aiReasoningLoading, setAiReasoningLoading] = React.useState(false);
+  const [aiReasoningError, setAiReasoningError] = React.useState<string | null>(null);
   const editorRef = React.useRef<CodeEditorRef>(null);
   const { theme, resolvedTheme, setTheme } = useTheme();
   const { addNotification } = useNotification();
@@ -802,41 +806,15 @@ jobs:
       
       // Analyze on load (best-effort)
       if (data.content) {
-        const ar = await fetch('/api/analyze/file', { 
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' }, 
-          body: JSON.stringify({ path, content: data.content }) 
-        });
-        if (ar.ok) {
-          const aj = await ar.json();
-          setFindings(aj.findings || []);
-          
-          // Show notification if vulnerabilities found
-          if (aj.findings && aj.findings.length > 0) {
-            const criticalCount = aj.findings.filter((f: Finding) => f.severity === "critical").length;
-            const highCount = aj.findings.filter((f: Finding) => f.severity === "high").length;
-            
-            if (criticalCount > 0) {
-              addNotification({
-                type: "error",
-                title: "Critical vulnerabilities found",
-                message: `Found ${criticalCount} critical and ${highCount} high severity issues`,
-                duration: 8000
-              });
-            } else if (highCount > 0) {
-              addNotification({
-                type: "warning",
-                title: "Security issues found",
-                message: `Found ${highCount} high severity issues`,
-                duration: 5000
-              });
-            }
-          }
-        } else {
-          setFindings([]);
-        }
+        setFindings([]); // Clear previous findings
+        setAiReasoning("");
+        setAiReasoningError(null);
+        setAiReasoningLoading(false);
       } else {
         setFindings([]);
+        setAiReasoning("");
+        setAiReasoningLoading(false);
+        setAiReasoningError(null);
       }
       
       // Show success notification
@@ -943,54 +921,47 @@ jobs:
       setGlobalError('No internet connection. Cannot send message.');
       return;
     }
-    
     const userMsg: Message = { id: generateId(), role: "user", content };
     const pendingId = generateId();
-    
     // Add thinking delay for deep research commands
     const isDeepCommand = content.includes('/deep-research') || content.includes('/audit-all');
     const thinkingDelay = isDeepCommand ? 3000 : 1500;
-    
     setMessages((m) => [...m, userMsg, { id: pendingId, role: "assistant", content: "" }]);
     setGlobalError(undefined);
-    
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
-      
+      // Always include code if a file is selected
+      const body: any = {
+        messages: [...messages, userMsg],
+        currentFile: activePath,
+        isDeepAnalysis: isDeepCommand,
+      };
+      if (activePath && code) {
+        body.code = code;
+      }
       const res = await fetch("/api/chat", { 
         method: "POST", 
         headers: { "Content-Type": "application/json" }, 
-        body: JSON.stringify({ 
-          messages: [...messages, userMsg],
-          currentFile: activePath,
-          isDeepAnalysis: isDeepCommand
-        }),
+        body: JSON.stringify(body),
         signal: controller.signal
       });
-      
       clearTimeout(timeoutId);
-      
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: 'Network error' }));
         throw new Error(errorData.error || `Server error (${res.status})`);
       }
-      
       const data = await res.json();
-      
       if (!data.reply) {
         throw new Error('Empty response from AI');
       }
-      
       // Simulate thinking time for better UX
       setTimeout(() => {
         setMessages((m) => m.map((msg) => (msg.id === pendingId ? { ...msg, content: data.reply } : msg)));
       }, thinkingDelay);
-      
     } catch (error: any) {
       console.error('Chat error:', error);
       let errorMessage = "Sorry, I encountered an error processing your request.";
-      
       if (error.name === 'AbortError') {
         errorMessage = "Request timed out. Please try again with a shorter message.";
         setGlobalError('AI response timed out');
@@ -1003,7 +974,6 @@ jobs:
         errorMessage = "Server error. Our team has been notified.";
         setGlobalError('Server error occurred');
       }
-      
       setTimeout(() => {
         setMessages((m) => m.map((msg) => (msg.id === pendingId ? { ...msg, content: errorMessage } : msg)));
       }, 1000);
@@ -1261,13 +1231,31 @@ jobs:
             <div className="flex-1 overflow-hidden">
               {mode === "code" ? (
                 <div className="relative h-full flex">
-                  <div className="flex-1">
-                    {/* Visual Summary Dashboard and Audit Summary */}
+                  <div className="flex-1 flex flex-col">
                     {findings.length > 0 && (
                       <div className="mb-4">
                         <AuditPanel findings={findings} />
                       </div>
                     )}
+                    {/* AI Reasoning Panel */}
+                    <div className="mb-4">
+                      <div className="rounded border bg-background/80 p-4 shadow-sm">
+                        <div className="font-semibold mb-2 flex items-center gap-2">
+                          <span>AI Reasoning & Bug Report</span>
+                          {aiReasoningLoading && <span className="text-xs text-muted-foreground animate-pulse">Loading...</span>}
+                          {aiReasoningError && <span className="text-xs text-red-500">{aiReasoningError}</span>}
+                        </div>
+                        {aiReasoningLoading ? (
+                          <div className="text-muted-foreground text-sm">The AI is analyzing this file for bugs and vulnerabilities...</div>
+                        ) : aiReasoning ? (
+                          <div className="prose max-w-none">
+                            <MarkdownRenderer content={aiReasoning} />
+                          </div>
+                        ) : (
+                          <div className="text-muted-foreground text-sm">No AI reasoning available for this file yet.</div>
+                        )}
+                      </div>
+                    </div>
                     <CodeEditor
                       ref={editorRef}
                       path={activePath}
@@ -1284,7 +1272,6 @@ jobs:
                         to save
                       </div>
                     )}
-                    
                     {/* Floating Security Button */}
                     <div className="absolute bottom-6 right-6 z-10">
                       <button 
@@ -1296,7 +1283,6 @@ jobs:
                       </button>
                     </div>
                   </div>
-                  
                   {/* Issues Panel */}
                   {findings.length > 0 && (
                     <div className="w-80 border-l">
@@ -1306,7 +1292,6 @@ jobs:
                       />
                     </div>
                   )}
-                  
                   {/* Collaboration Panel */}
                   {showCollaboration && (
                     <CollaborationPanel 
@@ -1314,7 +1299,6 @@ jobs:
                       path={activePath}
                     />
                   )}
-                  
                   {/* File History Panel */}
                   {showFileHistory && (
                     <FileHistory 

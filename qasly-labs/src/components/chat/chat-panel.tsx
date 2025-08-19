@@ -5,7 +5,7 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Bot, UserRound, Send, FileText } from "lucide-react";
+import { Bot, UserRound, Send, FileText, Loader2 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
 import { CollapsibleMessage } from "@/components/chat/collapsible-message";
 import { TypewriterMarkdown } from "@/components/chat/typewriter-markdown";
@@ -32,13 +32,13 @@ export function ChatPanel({ messages, onSend, className, showHeader = true, cont
   const [showSlash, setShowSlash] = React.useState(false);
   const [isSending, setIsSending] = React.useState(false);
   const [stopToken, setStopToken] = React.useState(0);
+  const [retryMsg, setRetryMsg] = React.useState<string | null>(null);
   const slashOptions = React.useMemo(() => [
-    { key: "analyze-file", label: "Analyze current file" },
-    { key: "list-risks", label: "List potential risks" },
-    { key: "suggest-fixes", label: "Suggest fixes" },
-    { key: "explain-vuln", label: "Explain a vulnerability" },
-    { key: "review-changes", label: "Review recent changes" },
-    { key: "deep-research", label: "Deep research" },
+    { key: "audit-all", label: "Full Scan Repo", desc: "Scan the entire repository for vulnerabilities." },
+    { key: "audit-file", label: "Scan Current File", desc: "Analyze the currently open file for bugs and risks." },
+    { key: "list-risks", label: "List Risks", desc: "List potential security risks in the current file." },
+    { key: "suggest-fixes", label: "Suggest Fixes", desc: "Suggest code or config fixes for the current file." },
+    { key: "deep-research", label: "Deep Research", desc: "Ask the AI to do a deep dive on the codebase." },
   ], []);
   const quickActions = React.useMemo(() => [
     { key: "audit-all", label: "Full Scan Repo" },
@@ -52,17 +52,34 @@ export function ChatPanel({ messages, onSend, className, showHeader = true, cont
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length]);
 
+  // Show slash command dropdown
+  const filteredSlash = showSlash && input.startsWith("/")
+    ? slashOptions.filter(opt => opt.key.includes(input.slice(1)))
+    : [];
+  const [slashIndex, setSlashIndex] = React.useState(0);
+
+  // Retry logic
+  const handleRetry = () => {
+    if (retryMsg) {
+      setRetryMsg(null);
+      setInput(retryMsg);
+      setTimeout(() => handleSubmit(), 100); // Resend after input is set
+    }
+  };
+
+  // Enhanced handleSubmit to set retryMsg on error
   const handleSubmit = async () => {
     if (!input.trim() || isSending) return;
     setIsSending(true);
     const message = input.trim();
     setInput("");
     setShowSlash(false);
-    
+    setRetryMsg(null);
     try {
-      onSend(message);
-      // Keep input focused for continuous conversation
+      await onSend(message);
       inputRef.current?.focus();
+    } catch (e) {
+      setRetryMsg(message);
     } finally {
       setIsSending(false);
     }
@@ -107,6 +124,28 @@ export function ChatPanel({ messages, onSend, className, showHeader = true, cont
   React.useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Keyboard navigation for slash commands
+  React.useEffect(() => {
+    if (!showSlash) return;
+    const handler = (e: KeyboardEvent) => {
+      if (filteredSlash.length === 0) return;
+      if (e.key === "ArrowDown") {
+        setSlashIndex(i => (i + 1) % filteredSlash.length);
+        e.preventDefault();
+      } else if (e.key === "ArrowUp") {
+        setSlashIndex(i => (i - 1 + filteredSlash.length) % filteredSlash.length);
+        e.preventDefault();
+      } else if (e.key === "Enter") {
+        setInput("/" + filteredSlash[slashIndex].key);
+        setShowSlash(false);
+        setTimeout(() => handleSubmit(), 100);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [showSlash, filteredSlash, slashIndex]);
 
   return (
     <div className={cn("h-full flex flex-col bg-card/20", className)}>
@@ -192,6 +231,15 @@ export function ChatPanel({ messages, onSend, className, showHeader = true, cont
                 </div>
               );
             })}
+            {/* Loading spinner */}
+            {isSending && (
+              <div className="flex justify-start">
+                <div className="flex items-center gap-2 text-muted-foreground text-sm animate-pulse">
+                  <Loader2 className="animate-spin" />
+                  AI is thinking…
+                </div>
+              </div>
+            )}
             <div ref={endRef} />
           </div>
         </div>
@@ -221,6 +269,7 @@ export function ChatPanel({ messages, onSend, className, showHeader = true, cont
                 const v = e.target.value;
                 setInput(v);
                 setShowSlash(v.trim().startsWith("/"));
+                setSlashIndex(0);
               }}
               onKeyDown={handleKeyDown}
               disabled={isSending}
@@ -247,14 +296,15 @@ export function ChatPanel({ messages, onSend, className, showHeader = true, cont
               Stop
             </Button>
           </div>
-          {showSlash && (
+          {showSlash && filteredSlash.length > 0 && (
             <div className="mt-2 grid grid-cols-2 gap-2">
-              {slashOptions.map((opt) => (
+              {filteredSlash.map((opt, i) => (
                 <button
                   key={opt.key}
                   onClick={() => {
-                    setInput(`/${opt.key} `);
+                    setInput("/" + opt.key);
                     setShowSlash(false);
+                    setTimeout(() => handleSubmit(), 100);
                   }}
                   className="text-left text-[13px] px-3 py-2 rounded-md border bg-card hover:bg-accent/50 transition-surgical"
                 >
